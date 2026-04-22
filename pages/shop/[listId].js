@@ -25,36 +25,43 @@ export default function ShopPage() {
   const [completed, setCompleted] = useState(false);
   const [marking, setMarking] = useState(false);
   const [shopperName, setShopperName] = useState('');
+  const [logs, setLogs] = useState(['pagina gestart']);
 
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
   const bootedRef = useRef(false);
 
+  function log(msg) {
+    console.log('[shop]', msg);
+    setLogs(prev => [...prev, msg]);
+  }
+
   useEffect(() => {
+    log('router.isReady=' + router.isReady + ' listId=' + listId + ' org=' + org + ' token=' + (token ? token.substring(0,8) + '...' : 'geen'));
     if (!router.isReady) return;
     if (bootedRef.current) return;
     bootedRef.current = true;
     boot();
-  }, [router.isReady]);
+  }, [router.isReady, listId]);
 
   async function boot() {
     try {
-      // Check if we have a valid localStorage session
       const session = getShopperSession();
+      log('sessie in localStorage: ' + (session ? JSON.stringify({orgId: session.orgId, memberId: session.memberId?.substring(0,8)}) : 'geen'));
 
       if (session?.orgId && session?.memberId) {
-        // Session exists — load the list directly
+        log('sessie gevonden → items laden');
         setShopperName(session.firstName || '');
         await loadItems(session.orgId, listId);
       } else if (org && token) {
-        // No session but URL has org+token — authenticate first
+        log('geen sessie maar org+token aanwezig → authenticeren');
         await authenticateAndLoad(org, token);
       } else {
-        // No session, no token — can't proceed
+        log('geen sessie en geen token → no-session');
         setPhase('no-session');
       }
     } catch (err) {
-      console.error('[shop] boot error:', err);
+      log('boot fout: ' + err.message);
       setErrorMsg(`Opstartfout: ${err.message}`);
       setPhase('error');
     }
@@ -63,9 +70,10 @@ export default function ShopPage() {
   async function authenticateAndLoad(orgId, qrToken) {
     setPhase('loading');
     try {
-      // Validate QR token
+      log('token valideren voor org: ' + orgId);
       const { MemberFactory } = await import('../../lib/dbSchema');
       const snap = await MemberFactory.getByQrToken(orgId, qrToken);
+      log('token validatie: ' + (snap.empty ? 'NIET GEVONDEN' : 'OK'));
       if (snap.empty) {
         setErrorMsg('Ongeldige QR-code. Vraag een nieuwe aan je begeleider.');
         setPhase('error');
@@ -73,12 +81,14 @@ export default function ShopPage() {
       }
       const memberDoc = snap.docs[0];
       const member = { memberId: memberDoc.id, ...memberDoc.data() };
+      log('lid gevonden: ' + member.firstName);
 
-      // Sign in anonymously
+      log('anoniem inloggen...');
       const anonCred = await signInAnonymously(auth);
+      log('anoniem ingelogd: ' + anonCred.user.uid.substring(0,8));
       const idToken = await getIdToken(anonCred.user);
 
-      // Set custom claims
+      log('claims instellen via API...');
       const res = await fetch('/api/shopper/auth', {
         method: 'POST',
         headers: {
@@ -87,6 +97,7 @@ export default function ShopPage() {
         },
         body: JSON.stringify({ orgId, memberId: member.memberId }),
       });
+      log('API antwoord: ' + res.status);
 
       if (!res.ok) {
         const data = await res.json();
@@ -95,21 +106,16 @@ export default function ShopPage() {
         return;
       }
 
-      // Force token refresh
+      log('token vernieuwen...');
       await anonCred.user.getIdToken(true);
-
-      // Save session
-      saveShopperSession({
-        orgId,
-        memberId: member.memberId,
-        firstName: member.firstName,
-      });
+      log('sessie opslaan...');
+      saveShopperSession({ orgId, memberId: member.memberId, firstName: member.firstName });
       setShopperName(member.firstName || '');
 
-      // Load items
+      log('items laden...');
       await loadItems(orgId, listId);
     } catch (err) {
-      console.error('[shop] authenticateAndLoad error:', err);
+      log('authenticatie fout: ' + err.message);
       setErrorMsg(`Fout: ${err.message}`);
       setPhase('error');
     }
@@ -117,9 +123,11 @@ export default function ShopPage() {
 
   async function loadItems(orgId, listId) {
     setPhase('loading');
+    log('items ophalen: org=' + orgId + ' list=' + listId);
     try {
       const snap = await ListItemFactory.getAll(orgId, listId);
       const allItems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      log(allItems.length + ' items geladen');
 
       setItems(allItems);
 
@@ -130,8 +138,9 @@ export default function ShopPage() {
         setCurrentIndex(firstUnchecked >= 0 ? firstUnchecked : 0);
       }
       setPhase('ready');
+      log('klaar!');
     } catch (err) {
-      console.error('[shop] loadItems error:', err.code, err.message);
+      log('loadItems fout: ' + err.code + ' — ' + err.message);
       if (err.code === 'permission-denied') {
         setErrorMsg('Geen toegang. Scan opnieuw je QR-code.');
       } else {
@@ -218,6 +227,12 @@ export default function ShopPage() {
         <p style={styles.loadingText}>
           {phase === 'booting' ? 'Opstarten...' : 'Lijstje laden...'}
         </p>
+        <div style={styles.debugPanel}>
+          <p style={styles.debugTitle}>Debug log:</p>
+          {logs.map((l, i) => (
+            <p key={i} style={styles.debugLine}>→ {l}</p>
+          ))}
+        </div>
       </div>
     );
   }
@@ -617,5 +632,30 @@ const styles = {
   completionStars: {
     fontSize: '2.5rem',
     marginTop: '0.5rem',
+  },
+  debugPanel: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    padding: '0.75rem 1rem',
+    maxHeight: '45vh',
+    overflowY: 'auto',
+  },
+  debugTitle: {
+    color: '#fff',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    margin: '0 0 0.4rem',
+    fontFamily: 'monospace',
+  },
+  debugLine: {
+    color: '#00e676',
+    fontSize: '0.72rem',
+    fontFamily: 'monospace',
+    margin: '0.2rem 0',
+    wordBreak: 'break-all',
+    lineHeight: 1.4,
   },
 };
