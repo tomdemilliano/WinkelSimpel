@@ -3,12 +3,12 @@
  *
  * QR scan entry point for shoppers.
  *
- * Primary flow (recommended):
- *   Shopper scans QR code with phone camera app → browser opens
- *   https://app.url/scan?org={orgId}&token={qrToken} directly
- *
- * Secondary flow (fallback):
- *   Shopper opens /scan manually → camera opens in browser to scan QR code
+ * Three modes:
+ *   1. URL parameters present (?org=...&token=...): validate directly
+ *      → works when scanning QR with phone camera app
+ *      → works when clicking the link on laptop (via QR card debug URL)
+ *   2. No parameters: show camera scanner (mobile fallback)
+ *   3. Dev mode: show manual input form to test without QR code
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -23,9 +23,13 @@ export default function ScanPage() {
   const router = useRouter();
   const { ready } = router;
 
-  // 'idle' | 'validating' | 'scanning' | 'error' | 'no-list'
   const [status, setStatus] = useState('idle');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Manual input state (for laptop testing)
+  const [manualOrg, setManualOrg] = useState('');
+  const [manualToken, setManualToken] = useState('');
+
   const scannerInstanceRef = useRef(null);
   const handledRef = useRef(false);
 
@@ -35,12 +39,10 @@ export default function ScanPage() {
 
     const parsed = parseQrQuery(router.query);
     if (parsed) {
-      // URL parameters present — came from scanning QR with camera app
       handledRef.current = true;
       handleToken(parsed.orgId, parsed.token);
     } else {
-      // No parameters — show camera scanner as fallback
-      setStatus('scanning');
+      setStatus('choice');
     }
   }, [ready, router.query]);
 
@@ -80,12 +82,12 @@ export default function ScanPage() {
               setStatus('error');
             }
           },
-          () => {} // ignore per-frame errors
+          () => {}
         );
       } catch (err) {
         console.error('Camera start error:', err);
         if (isMounted) {
-          setErrorMessage('Camera kon niet worden gestart. Controleer de toestemming in je browser.');
+          setErrorMessage('Camera kon niet worden gestart. Probeer de handmatige methode.');
           setStatus('error');
         }
       }
@@ -104,7 +106,6 @@ export default function ScanPage() {
   async function handleToken(orgId, token) {
     setStatus('validating');
     try {
-      // Step 1: validate QR token against Firestore
       const member = await validateQrToken(orgId, token);
       if (!member) {
         setErrorMessage('Deze QR-code is niet geldig. Vraag een nieuwe aan je begeleider.');
@@ -112,11 +113,9 @@ export default function ScanPage() {
         return;
       }
 
-      // Step 2: sign in anonymously via Firebase Auth
       const anonCredential = await signInAnonymously(auth);
       const anonUser = anonCredential.user;
 
-      // Step 3: call server to set custom claims (role, orgId, memberId)
       const idToken = await getIdToken(anonUser);
       const claimsRes = await fetch('/api/shopper/auth', {
         method: 'POST',
@@ -134,17 +133,14 @@ export default function ScanPage() {
         return;
       }
 
-      // Step 4: force token refresh so Firestore rules see the new claims
       await anonUser.getIdToken(true);
 
-      // Step 5: save session to localStorage for the shopper interface
       saveShopperSession({
         orgId,
         memberId: member.memberId,
         firstName: member.firstName,
       });
 
-      // Step 6: find active list and redirect
       const listSnap = await ShoppingListFactory.getActiveForMember(orgId, member.memberId);
       if (!listSnap.empty) {
         router.replace(`/shop/${listSnap.docs[0].id}`);
@@ -153,40 +149,102 @@ export default function ScanPage() {
       }
     } catch (err) {
       console.error('handleToken error:', err);
-      setErrorMessage('Er is iets misgegaan. Probeer opnieuw.');
+      setErrorMessage(`Fout: ${err.message}`);
       setStatus('error');
     }
   }
 
-  // -------------------------------------------------------------------------
+  function handleManualSubmit(e) {
+    e.preventDefault();
+    if (!manualOrg.trim() || !manualToken.trim()) return;
+    handledRef.current = true;
+    handleToken(manualOrg.trim(), manualToken.trim());
+  }
+
+  // ---------------------------------------------------------------------------
   // Render
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   return (
     <div style={styles.page}>
 
-      {/* Idle — waiting for router to be ready */}
+      {/* Idle */}
       {status === 'idle' && (
         <div style={styles.centered}>
           <div style={styles.spinner} />
         </div>
       )}
 
-      {/* Validating — processing QR token */}
-      {status === 'validating' && (
-        <div style={styles.centered}>
-          <div style={styles.spinner} />
-          <p style={styles.statusText}>Even controleren...</p>
+      {/* Choice: camera or manual */}
+      {status === 'choice' && (
+        <div style={styles.choiceWrapper}>
+          <p style={styles.choiceTitle}>🛒 Winkel Simpel</p>
+          <p style={styles.choiceSubtitle}>Hoe wil je inloggen?</p>
+
+          <button
+            style={styles.choiceButton}
+            onClick={() => setStatus('scanning')}
+          >
+            📷 QR-code scannen
+          </button>
+
+          <div style={styles.divider}>
+            <span style={styles.dividerText}>of</span>
+          </div>
+
+          <form onSubmit={handleManualSubmit} style={styles.manualForm}>
+            <p style={styles.manualLabel}>Handmatig invoeren (voor testen)</p>
+            <input
+              type="text"
+              placeholder="Organisatie ID"
+              value={manualOrg}
+              onChange={(e) => setManualOrg(e.target.value)}
+              style={styles.manualInput}
+            />
+            <input
+              type="text"
+              placeholder="QR Token"
+              value={manualToken}
+              onChange={(e) => setManualToken(e.target.value)}
+              style={styles.manualInput}
+            />
+            <button type="submit" style={styles.manualButton}>
+              Inloggen
+            </button>
+          </form>
+
+          <p style={styles.manualHint}>
+            Vind de organisatie ID en token via het QR-kaartje van de shopper
+            (de URL bevat <code>?org=...&token=...</code>)
+          </p>
         </div>
       )}
 
       {/* Camera scanner */}
       {status === 'scanning' && (
         <div style={styles.scannerWrapper}>
-          <p style={styles.scanInstruction}>
-            Richt de camera op je kaartje
-          </p>
+          <button
+            style={styles.backButton}
+            onClick={() => {
+              if (scannerInstanceRef.current) {
+                scannerInstanceRef.current.stop().catch(() => {});
+              }
+              handledRef.current = false;
+              setStatus('choice');
+            }}
+          >
+            ← Terug
+          </button>
+          <p style={styles.scanInstruction}>Richt de camera op je kaartje</p>
           <div id="qr-reader" style={styles.scannerBox} />
           <p style={styles.scanHint}>📷</p>
+        </div>
+      )}
+
+      {/* Validating */}
+      {status === 'validating' && (
+        <div style={styles.centered}>
+          <div style={styles.spinner} />
+          <p style={styles.statusText}>Even controleren...</p>
         </div>
       )}
 
@@ -199,7 +257,7 @@ export default function ScanPage() {
             style={styles.retryButton}
             onClick={() => {
               handledRef.current = false;
-              setStatus('scanning');
+              setStatus('choice');
             }}
           >
             Opnieuw proberen
@@ -220,9 +278,6 @@ export default function ScanPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 const styles = {
   page: {
     minHeight: '100vh',
@@ -232,7 +287,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     fontFamily: 'system-ui, sans-serif',
-    padding: '1rem',
+    padding: '1.5rem',
   },
   centered: {
     display: 'flex',
@@ -242,25 +297,116 @@ const styles = {
     textAlign: 'center',
     padding: '2rem',
   },
+  choiceWrapper: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '1rem',
+    width: '100%',
+    maxWidth: '360px',
+  },
+  choiceTitle: {
+    fontSize: '1.75rem',
+    fontWeight: '800',
+    color: '#1a1a1a',
+    margin: 0,
+  },
+  choiceSubtitle: {
+    fontSize: '1rem',
+    color: '#888',
+    margin: '0 0 0.5rem',
+  },
+  choiceButton: {
+    width: '100%',
+    padding: '1rem',
+    backgroundColor: '#4CAF50',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '1.1rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  divider: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    gap: '0.75rem',
+  },
+  dividerText: {
+    color: '#ccc',
+    fontSize: '0.875rem',
+    flexShrink: 0,
+    margin: '0 auto',
+  },
+  manualForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem',
+    width: '100%',
+  },
+  manualLabel: {
+    fontSize: '0.8rem',
+    fontWeight: '600',
+    color: '#aaa',
+    margin: 0,
+    textAlign: 'left',
+  },
+  manualInput: {
+    padding: '0.7rem 1rem',
+    borderRadius: '10px',
+    border: '1.5px solid #ddd',
+    fontSize: '0.9rem',
+    width: '100%',
+    boxSizing: 'border-box',
+    fontFamily: 'monospace',
+  },
+  manualButton: {
+    padding: '0.75rem',
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.95rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  manualHint: {
+    fontSize: '0.75rem',
+    color: '#bbb',
+    textAlign: 'center',
+    lineHeight: 1.5,
+    margin: 0,
+  },
   scannerWrapper: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '1.5rem',
+    gap: '1rem',
     width: '100%',
     maxWidth: '400px',
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    background: 'none',
+    border: 'none',
+    fontSize: '0.9rem',
+    color: '#4CAF50',
+    cursor: 'pointer',
+    fontWeight: '600',
+    padding: 0,
+  },
+  scanInstruction: {
+    fontSize: '1.4rem',
+    fontWeight: '700',
+    color: '#1a1a1a',
+    textAlign: 'center',
+    margin: 0,
   },
   scannerBox: {
     width: '100%',
     borderRadius: '16px',
     overflow: 'hidden',
-  },
-  scanInstruction: {
-    fontSize: '1.5rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    textAlign: 'center',
-    margin: 0,
   },
   scanHint: {
     fontSize: '3rem',
@@ -283,11 +429,12 @@ const styles = {
     fontSize: '5rem',
   },
   errorText: {
-    fontSize: '1.1rem',
+    fontSize: '1rem',
     color: '#c62828',
-    maxWidth: '300px',
+    maxWidth: '320px',
     lineHeight: '1.6',
     margin: 0,
+    wordBreak: 'break-word',
   },
   noListText: {
     fontSize: '1.4rem',
