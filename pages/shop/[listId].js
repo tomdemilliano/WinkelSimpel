@@ -1,17 +1,7 @@
 /**
  * pages/shop/[listId].js — Winkel Simpel
  *
- * The shopper interface. This is the most important page in the app.
- * Designed for people with disabilities who often cannot read.
- *
- * Design principles:
- * - Product image fills at least 60% of the screen
- * - Product name in very large text
- * - Quantity displayed prominently
- * - One big "Genomen!" button at the bottom
- * - Swipe left/right or large arrow buttons to navigate
- * - Completion screen with encouraging message and image
- * - No distracting elements, no small text, no navigation bar
+ * The shopper interface. Designed for people with disabilities.
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -19,9 +9,6 @@ import { useRouter } from 'next/router';
 import { withShopperGuard } from '../../lib/auth';
 import { ShoppingListFactory, ListItemFactory } from '../../lib/dbSchema';
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 function ShopPage({ shopperSession }) {
   const router = useRouter();
   const { listId } = router.query;
@@ -30,51 +17,54 @@ function ShopPage({ shopperSession }) {
   const [items, setItems] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [marking, setMarking] = useState(false);
 
-  // Touch/swipe support
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
 
   useEffect(() => {
-    if (!listId) return;
+    // Wait for router to be ready and listId to be available
+    if (!router.isReady || !listId) return;
     loadItems();
-  }, [listId]);
+  }, [router.isReady, listId]);
 
   async function loadItems() {
     setLoading(true);
+    setError('');
     try {
+      console.log('[shop] loading items for list:', listId, 'org:', orgId);
       const snap = await ListItemFactory.getAll(orgId, listId);
       const allItems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      console.log('[shop] loaded', allItems.length, 'items');
 
-      // Start at the first unchecked item
-      const firstUnchecked = allItems.findIndex((item) => !item.checked);
       setItems(allItems);
 
       if (allItems.length === 0 || allItems.every((i) => i.checked)) {
         setCompleted(true);
       } else {
+        const firstUnchecked = allItems.findIndex((item) => !item.checked);
         setCurrentIndex(firstUnchecked >= 0 ? firstUnchecked : 0);
       }
     } catch (err) {
-      console.error('Failed to load items:', err);
+      console.error('[shop] Failed to load items:', err.code, err.message);
+      if (err.code === 'permission-denied') {
+        setError('Geen toegang tot dit lijstje. Scan opnieuw je QR-code.');
+      } else {
+        setError(`Kon het lijstje niet laden: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Mark current item as taken
-  // -------------------------------------------------------------------------
   async function handleTaken() {
     if (marking) return;
     const item = items[currentIndex];
     if (!item || item.checked) return;
 
     setMarking(true);
-
-    // Optimistic update
     const updatedItems = items.map((i, idx) =>
       idx === currentIndex ? { ...i, checked: true } : i
     );
@@ -83,32 +73,29 @@ function ShopPage({ shopperSession }) {
     try {
       await ListItemFactory.check(orgId, listId, item.id);
     } catch (err) {
-      console.error('Failed to check item:', err);
-      // Revert on error
+      console.error('[shop] Failed to check item:', err);
       setItems(items);
+      setMarking(false);
+      return;
     }
 
-    // Check if all items are done
     const allDone = updatedItems.every((i) => i.checked);
     if (allDone) {
-      // Short pause before showing completion screen
       setTimeout(async () => {
         try {
           await ShoppingListFactory.complete(orgId, listId);
         } catch (err) {
-          console.error('Failed to complete list:', err);
+          console.error('[shop] Failed to complete list:', err);
         }
         setCompleted(true);
         setMarking(false);
       }, 400);
     } else {
-      // Move to next unchecked item
       const nextIndex = updatedItems.findIndex(
         (item, idx) => idx > currentIndex && !item.checked
       );
       const fallbackIndex = updatedItems.findIndex((item) => !item.checked);
       const goTo = nextIndex >= 0 ? nextIndex : fallbackIndex;
-
       setTimeout(() => {
         setCurrentIndex(goTo);
         setMarking(false);
@@ -116,9 +103,6 @@ function ShopPage({ shopperSession }) {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Navigation
-  // -------------------------------------------------------------------------
   function goNext() {
     if (currentIndex < items.length - 1) setCurrentIndex((i) => i + 1);
   }
@@ -127,9 +111,6 @@ function ShopPage({ shopperSession }) {
     if (currentIndex > 0) setCurrentIndex((i) => i - 1);
   }
 
-  // -------------------------------------------------------------------------
-  // Swipe handling
-  // -------------------------------------------------------------------------
   function handleTouchStart(e) {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
@@ -139,8 +120,6 @@ function ShopPage({ shopperSession }) {
     if (touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = Math.abs(e.changedTouches[0].clientY - touchStartY.current);
-
-    // Only trigger swipe if horizontal movement > 50px and not primarily vertical
     if (Math.abs(dx) > 50 && Math.abs(dx) > dy) {
       if (dx < 0) goNext();
       else goPrev();
@@ -149,27 +128,37 @@ function ShopPage({ shopperSession }) {
     touchStartY.current = null;
   }
 
-  // -------------------------------------------------------------------------
-  // Render: loading
-  // -------------------------------------------------------------------------
+  // Loading
   if (loading) {
     return (
       <div style={styles.fullScreen}>
         <div style={styles.loadingSpinner} />
+        <p style={styles.loadingText}>Lijstje laden...</p>
       </div>
     );
   }
 
-  // -------------------------------------------------------------------------
-  // Render: completed
-  // -------------------------------------------------------------------------
+  // Error
+  if (error) {
+    return (
+      <div style={styles.fullScreen}>
+        <div style={styles.errorContent}>
+          <p style={styles.errorIcon}>😕</p>
+          <p style={styles.errorText}>{error}</p>
+          <button style={styles.retryButton} onClick={loadItems}>
+            Opnieuw proberen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Completed
   if (completed) {
     return <CompletionScreen firstName={firstName} />;
   }
 
-  // -------------------------------------------------------------------------
-  // Render: empty list
-  // -------------------------------------------------------------------------
+  // Empty list
   if (items.length === 0) {
     return (
       <div style={styles.fullScreen}>
@@ -183,26 +172,23 @@ function ShopPage({ shopperSession }) {
   const totalCount = items.length;
   const progressPct = (checkedCount / totalCount) * 100;
 
-  // -------------------------------------------------------------------------
-  // Render: main shopper view
-  // -------------------------------------------------------------------------
   return (
     <div
       style={styles.fullScreen}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Progress bar — top of screen */}
+      {/* Progress bar */}
       <div style={styles.progressBarWrapper}>
         <div style={{ ...styles.progressBarFill, width: `${progressPct}%` }} />
       </div>
 
-      {/* Counter — e.g. "2 / 5" */}
+      {/* Counter */}
       <div style={styles.counter}>
         <span style={styles.counterText}>{checkedCount + 1} / {totalCount}</span>
       </div>
 
-      {/* Product image — fills most of the screen */}
+      {/* Product image */}
       <div style={styles.imageContainer}>
         {currentItem.productImageUrl ? (
           <img
@@ -216,8 +202,6 @@ function ShopPage({ shopperSession }) {
             <span style={styles.imagePlaceholderIcon}>🛍️</span>
           </div>
         )}
-
-        {/* Already checked indicator */}
         {currentItem.checked && (
           <div style={styles.checkedOverlay}>
             <span style={styles.checkedIcon}>✓</span>
@@ -233,32 +217,21 @@ function ShopPage({ shopperSession }) {
         </p>
       </div>
 
-      {/* Navigation arrows */}
+      {/* Navigation */}
       <div style={styles.navRow}>
         <button
-          style={{
-            ...styles.navButton,
-            opacity: currentIndex === 0 ? 0.2 : 1,
-          }}
+          style={{ ...styles.navButton, opacity: currentIndex === 0 ? 0.2 : 1 }}
           onClick={goPrev}
           disabled={currentIndex === 0}
-          aria-label="Vorig product"
-        >
-          ←
-        </button>
+        >←</button>
 
-        {/* Dot indicators */}
         <div style={styles.dots}>
           {items.map((item, idx) => (
             <div
               key={item.id}
               style={{
                 ...styles.dot,
-                backgroundColor: item.checked
-                  ? '#4CAF50'
-                  : idx === currentIndex
-                  ? '#1a1a1a'
-                  : '#ddd',
+                backgroundColor: item.checked ? '#4CAF50' : idx === currentIndex ? '#1a1a1a' : '#ddd',
                 transform: idx === currentIndex ? 'scale(1.3)' : 'scale(1)',
               }}
             />
@@ -266,54 +239,31 @@ function ShopPage({ shopperSession }) {
         </div>
 
         <button
-          style={{
-            ...styles.navButton,
-            opacity: currentIndex === items.length - 1 ? 0.2 : 1,
-          }}
+          style={{ ...styles.navButton, opacity: currentIndex === items.length - 1 ? 0.2 : 1 }}
           onClick={goNext}
           disabled={currentIndex === items.length - 1}
-          aria-label="Volgend product"
-        >
-          →
-        </button>
+        >→</button>
       </div>
 
-      {/* Main action button */}
+      {/* Action button */}
       {!currentItem.checked ? (
         <button
-          style={{
-            ...styles.takenButton,
-            opacity: marking ? 0.7 : 1,
-            transform: marking ? 'scale(0.97)' : 'scale(1)',
-          }}
+          style={{ ...styles.takenButton, opacity: marking ? 0.7 : 1, transform: marking ? 'scale(0.97)' : 'scale(1)' }}
           onClick={handleTaken}
           disabled={marking}
         >
           ✓ Genomen!
         </button>
       ) : (
-        <div style={styles.alreadyTakenBadge}>
-          ✓ Al genomen
-        </div>
+        <div style={styles.alreadyTakenBadge}>✓ Al genomen</div>
       )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// CompletionScreen
-// ---------------------------------------------------------------------------
 function CompletionScreen({ firstName }) {
-  const messages = [
-    'Super gedaan!',
-    'Geweldig!',
-    'Fantastisch!',
-    'Goed bezig!',
-    'Wauw, perfect!',
-  ];
+  const messages = ['Super gedaan!', 'Geweldig!', 'Fantastisch!', 'Goed bezig!', 'Wauw, perfect!'];
   const emojis = ['🎉', '⭐', '🏆', '🎊', '👏', '🌟'];
-
-  // Pick a random message and set of emojis deterministically
   const message = messages[Math.floor(Math.random() * messages.length)];
   const emoji1 = emojis[Math.floor(Math.random() * emojis.length)];
   const emoji2 = emojis[Math.floor(Math.random() * emojis.length)];
@@ -325,20 +275,10 @@ function CompletionScreen({ firstName }) {
           <span style={styles.bigEmoji}>{emoji1}</span>
           <span style={styles.bigEmoji}>{emoji2}</span>
         </div>
-
         <p style={styles.completionMessage}>{message}</p>
-
-        {firstName && (
-          <p style={styles.completionName}>{firstName}</p>
-        )}
-
-        <p style={styles.completionSub}>
-          Alle boodschappen zijn gedaan!
-        </p>
-
-        <div style={styles.completionStars}>
-          {'⭐'.repeat(5)}
-        </div>
+        {firstName && <p style={styles.completionName}>{firstName}</p>}
+        <p style={styles.completionSub}>Alle boodschappen zijn gedaan!</p>
+        <div style={styles.completionStars}>{'⭐'.repeat(5)}</div>
       </div>
     </div>
   );
@@ -346,9 +286,6 @@ function CompletionScreen({ firstName }) {
 
 export default withShopperGuard(ShopPage);
 
-// ---------------------------------------------------------------------------
-// Styles — maximally visual, accessible first
-// ---------------------------------------------------------------------------
 const styles = {
   fullScreen: {
     position: 'fixed',
@@ -356,46 +293,97 @@ const styles = {
     backgroundColor: '#ffffff',
     display: 'flex',
     flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
     fontFamily: 'system-ui, sans-serif',
     userSelect: 'none',
   },
-
-  // Progress
+  loadingSpinner: {
+    width: '60px',
+    height: '60px',
+    border: '6px solid #eee',
+    borderTop: '6px solid #4CAF50',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+    marginBottom: '1rem',
+  },
+  loadingText: {
+    fontSize: '1.1rem',
+    color: '#aaa',
+    margin: 0,
+  },
+  errorContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '1.5rem',
+    padding: '2rem',
+    textAlign: 'center',
+  },
+  errorIcon: {
+    fontSize: '4rem',
+    margin: 0,
+  },
+  errorText: {
+    fontSize: '1.1rem',
+    color: '#c62828',
+    maxWidth: '300px',
+    lineHeight: '1.6',
+    margin: 0,
+  },
+  retryButton: {
+    padding: '1rem 2rem',
+    backgroundColor: '#4CAF50',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '1.1rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  emptyText: {
+    fontSize: '1.25rem',
+    color: '#aaa',
+    textAlign: 'center',
+    padding: '2rem',
+  },
   progressBarWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     height: '6px',
     backgroundColor: '#eee',
-    flexShrink: 0,
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#4CAF50',
     transition: 'width 0.4s ease',
   },
-
-  // Counter
   counter: {
+    position: 'absolute',
+    top: '14px',
+    left: 0,
+    right: 0,
     display: 'flex',
     justifyContent: 'center',
-    paddingTop: '0.75rem',
-    flexShrink: 0,
   },
   counterText: {
     fontSize: '1rem',
     fontWeight: '700',
     color: '#aaa',
-    letterSpacing: '0.05em',
   },
-
-  // Image
   imageContainer: {
     flex: 1,
     position: 'relative',
+    width: '100%',
     overflow: 'hidden',
-    margin: '0.75rem',
+    margin: '2.5rem 0.75rem 0.75rem',
     borderRadius: '20px',
     backgroundColor: '#f9f9f9',
     minHeight: 0,
+    alignSelf: 'stretch',
   },
   productImage: {
     width: '100%',
@@ -426,14 +414,12 @@ const styles = {
     fontSize: '6rem',
     color: '#4CAF50',
     fontWeight: '900',
-    textShadow: '0 2px 12px rgba(0,0,0,0.15)',
   },
-
-  // Product info
   productInfo: {
     padding: '0.5rem 1.25rem 0',
     textAlign: 'center',
     flexShrink: 0,
+    width: '100%',
   },
   productName: {
     fontSize: '2rem',
@@ -448,14 +434,13 @@ const styles = {
     color: '#4CAF50',
     margin: 0,
   },
-
-  // Navigation
   navRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0.75rem 1rem',
     flexShrink: 0,
+    width: '100%',
   },
   navButton: {
     width: '56px',
@@ -470,7 +455,6 @@ const styles = {
     justifyContent: 'center',
     color: '#1a1a1a',
     flexShrink: 0,
-    transition: 'opacity 0.2s',
   },
   dots: {
     display: 'flex',
@@ -487,8 +471,6 @@ const styles = {
     transition: 'all 0.2s ease',
     flexShrink: 0,
   },
-
-  // Action button
   takenButton: {
     margin: '0 1rem 1.5rem',
     padding: '1.25rem',
@@ -500,9 +482,9 @@ const styles = {
     fontWeight: '800',
     cursor: 'pointer',
     flexShrink: 0,
+    width: 'calc(100% - 2rem)',
     transition: 'transform 0.15s, opacity 0.15s',
     boxShadow: '0 4px 16px rgba(76, 175, 80, 0.4)',
-    letterSpacing: '0.02em',
   },
   alreadyTakenBadge: {
     margin: '0 1rem 1.5rem',
@@ -514,25 +496,8 @@ const styles = {
     fontWeight: '800',
     textAlign: 'center',
     flexShrink: 0,
+    width: 'calc(100% - 2rem)',
   },
-
-  // Loading
-  loadingSpinner: {
-    width: '60px',
-    height: '60px',
-    border: '6px solid #eee',
-    borderTop: '6px solid #4CAF50',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
-  },
-  emptyText: {
-    fontSize: '1.25rem',
-    color: '#aaa',
-    textAlign: 'center',
-    padding: '2rem',
-  },
-
-  // Completion screen
   completionScreen: {
     position: 'fixed',
     inset: 0,
@@ -557,7 +522,6 @@ const styles = {
   },
   bigEmoji: {
     fontSize: '5rem',
-    animation: 'none',
   },
   completionMessage: {
     fontSize: '3rem',
@@ -565,7 +529,6 @@ const styles = {
     color: '#fff',
     margin: 0,
     lineHeight: 1.1,
-    textShadow: '0 2px 8px rgba(0,0,0,0.15)',
   },
   completionName: {
     fontSize: '2rem',
@@ -582,6 +545,5 @@ const styles = {
   completionStars: {
     fontSize: '2.5rem',
     marginTop: '0.5rem',
-    letterSpacing: '0.1em',
   },
 };
