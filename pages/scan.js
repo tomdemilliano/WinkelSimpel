@@ -143,7 +143,9 @@ export default function ScanPage() {
 
       const listSnap = await ShoppingListFactory.getActiveForMember(orgId, member.memberId);
       if (!listSnap.empty) {
-        router.replace(`/shop/${listSnap.docs[0].id}`);
+        const listId = listSnap.docs[0].id;
+        // Include org and token so shop page can re-authenticate if session is lost
+        router.replace(`/shop/${listId}?org=${orgId}&token=${token}`);
       } else {
         setStatus('no-list');
       }
