@@ -177,6 +177,7 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
   const [importedImageUrl, setImportedImageUrl] = useState(product?.imageUrl || '');
+  const [manualImageUrl, setManualImageUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [importUrl, setImportUrl] = useState('');
@@ -347,6 +348,33 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
               onChange={handleImageChange}
               style={{ display: 'none' }}
             />
+          </div>
+
+          {/* Manual image URL */}
+          <div style={styles.field}>
+            <label style={styles.label}>Of plak een afbeelding-URL</label>
+            <div style={styles.importRow}>
+              <input
+                type="url"
+                value={manualImageUrl}
+                onChange={e => setManualImageUrl(e.target.value)}
+                style={{ ...styles.input, flex: 1, fontSize: '0.85rem' }}
+                placeholder="https://..."
+              />
+              <button
+                type="button"
+                disabled={!manualImageUrl.trim()}
+                style={{ ...styles.importButton, opacity: !manualImageUrl.trim() ? 0.6 : 1 }}
+                onClick={() => {
+                  setImportedImageUrl(manualImageUrl.trim());
+                  setImagePreview(manualImageUrl.trim());
+                  setImageFile(null);
+                  setManualImageUrl('');
+                }}
+              >
+                ↓ Gebruik
+              </button>
+            </div>
           </div>
 
           {/* Name */}
