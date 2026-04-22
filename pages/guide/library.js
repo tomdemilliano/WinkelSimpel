@@ -176,9 +176,38 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
   const [unit, setUnit] = useState(product?.unit || 'stuks');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
+  const [importedImageUrl, setImportedImageUrl] = useState(product?.imageUrl || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
   const fileInputRef = useRef();
+
+  async function handleImportUrl() {
+    if (!importUrl.trim()) return;
+    setImporting(true);
+    setError('');
+    try {
+      const res = await fetch('/api/import-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: importUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message); setImporting(false); return; }
+      if (data.name) setName(data.name);
+      if (data.imageUrl) {
+        setImportedImageUrl(data.imageUrl);
+        setImagePreview(data.imageUrl);
+        setImageFile(null); // gebruik de geïmporteerde URL, geen bestandsupload
+      }
+      setImportUrl('');
+    } catch (err) {
+      setError('Import mislukt: ' + err.message);
+    } finally {
+      setImporting(false);
+    }
+  }
 
   function handleImageChange(e) {
     const file = e.target.files[0];
@@ -231,6 +260,15 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
           const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
           await ProductFactory.update(orgId, docRef.id, { imageUrl });
           onSave({ id: docRef.id, name: name.trim(), unit, imageUrl });
+        } else if (importedImageUrl) {
+          // Use imported URL directly — no upload needed
+          const docRef = await ProductFactory.create(orgId, {
+            name: name.trim(),
+            imageUrl: importedImageUrl,
+            unit,
+            createdBy: claims.uid,
+          });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl });
         } else {
           // No image — save with empty imageUrl
           const docRef = await ProductFactory.create(orgId, {
@@ -260,6 +298,32 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
         </div>
 
         <form onSubmit={handleSubmit} style={styles.form}>
+
+          {/* URL import */}
+          <div style={styles.importSection}>
+            <label style={styles.label}>Importeren vanuit webshop (optioneel)</label>
+            <div style={styles.importRow}>
+              <input
+                type="url"
+                value={importUrl}
+                onChange={e => setImportUrl(e.target.value)}
+                style={{ ...styles.input, flex: 1, fontSize: '0.85rem' }}
+                placeholder="https://www.delhaize.be/nl/p/..."
+              />
+              <button
+                type="button"
+                onClick={handleImportUrl}
+                disabled={importing || !importUrl.trim()}
+                style={{ ...styles.importButton, opacity: importing || !importUrl.trim() ? 0.6 : 1 }}
+              >
+                {importing ? '...' : '↓ Haal op'}
+              </button>
+            </div>
+            <p style={styles.importHint}>
+              Plak een link van Delhaize, Colruyt, Albert Heijn, ... om naam en foto automatisch in te vullen.
+            </p>
+          </div>
+
           {/* Image upload */}
           <div style={styles.imageUploadArea} onClick={() => fileInputRef.current.click()}>
             {imagePreview ? (
@@ -528,6 +592,33 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     gap: '0.5rem',
+  },
+  importSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  },
+  importRow: {
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center',
+  },
+  importButton: {
+    padding: '0.75rem 0.875rem',
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  },
+  importHint: {
+    fontSize: '0.775rem',
+    color: '#aaa',
+    margin: 0,
   },
   imageUploadHint: {
     fontSize: '0.85rem',
