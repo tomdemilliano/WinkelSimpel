@@ -198,10 +198,7 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
       setError('Vul een productnaam in.');
       return;
     }
-    if (!isEditing && !imageFile) {
-      setError('Voeg een afbeelding toe.');
-      return;
-    }
+    // Image is optional — a placeholder icon will be shown if no image is provided
 
     setSaving(true);
     setError('');
@@ -222,18 +219,28 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
         await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl });
         onSave({ id: product.id, name: name.trim(), unit, imageUrl });
       } else {
-        // Create new product — first create doc to get ID, then upload image
-        const docRef = await ProductFactory.create(orgId, {
-          name: name.trim(),
-          imageUrl: '',
-          unit,
-          createdBy: claims.uid,
-        });
-
-        const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
-        await ProductFactory.update(orgId, docRef.id, { imageUrl });
-
-        onSave({ id: docRef.id, name: name.trim(), unit, imageUrl });
+        // Create new product
+        if (imageFile) {
+          // Upload image if provided
+          const docRef = await ProductFactory.create(orgId, {
+            name: name.trim(),
+            imageUrl: '',
+            unit,
+            createdBy: claims.uid,
+          });
+          const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
+          await ProductFactory.update(orgId, docRef.id, { imageUrl });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl });
+        } else {
+          // No image — save with empty imageUrl
+          const docRef = await ProductFactory.create(orgId, {
+            name: name.trim(),
+            imageUrl: '',
+            unit,
+            createdBy: claims.uid,
+          });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '' });
+        }
       }
     } catch (err) {
       console.error('Failed to save product:', err);
@@ -260,7 +267,7 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
             ) : (
               <div style={styles.imagePlaceholder}>
                 <span style={{ fontSize: '2.5rem' }}>📷</span>
-                <span style={styles.imageUploadHint}>Tik om een foto te kiezen</span>
+                <span style={styles.imageUploadHint}>Tik om een foto te kiezen (optioneel)</span>
               </div>
             )}
             <input
