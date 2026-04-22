@@ -1,76 +1,21 @@
 /**
- * pages/scan.js — import test
+ * pages/scan.js — stap voor stap flow test
+ * Gebruik dynamic import met ssr:false om client-only rendering te forceren
  */
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+import dynamic from 'next/dynamic';
 
-// Test imports één voor één
-let importError = null;
-let firebaseOk = false;
-let authOk = false;
-let dbOk = false;
-
-try {
-  require('../lib/firebase');
-  firebaseOk = true;
-} catch(e) {
-  importError = 'firebase.js: ' + e.message;
-}
-
-if (firebaseOk) {
-  try {
-    require('../lib/auth');
-    authOk = true;
-  } catch(e) {
-    importError = 'auth.js: ' + e.message;
-  }
-}
-
-if (authOk) {
-  try {
-    require('../lib/dbSchema');
-    dbOk = true;
-  } catch(e) {
-    importError = 'dbSchema.js: ' + e.message;
-  }
-}
+// Laad de echte component alleen client-side — Firebase werkt niet server-side
+const ScanPageClient = dynamic(() => import('../components/ScanPageClient'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '56px', height: '56px', border: '5px solid #eee', borderTop: '5px solid #4CAF50', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  ),
+});
 
 export default function ScanPage() {
-  const router = useRouter();
-  const [log, setLog] = useState([
-    'firebase.js: ' + (firebaseOk ? '✓ OK' : '✗ FOUT'),
-    'auth.js: ' + (authOk ? '✓ OK' : '✗ FOUT'),
-    'dbSchema.js: ' + (dbOk ? '✓ OK' : '✗ FOUT'),
-    importError ? 'FOUT: ' + importError : 'alle imports OK',
-  ]);
-
-  useEffect(() => {
-    if (!router.isReady) return;
-    const { org, token } = router.query;
-    setLog(prev => [...prev,
-      `router ready`,
-      `org=${org?.slice(0,8)}`,
-      `token=${token?.slice(0,8)}`,
-    ]);
-  }, [router.isReady]);
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: '#1a1a1a', padding: '1.5rem', overflow: 'auto' }}>
-      <p style={{ color: '#00e676', fontFamily: 'monospace', fontSize: '1.1rem', margin: '0 0 1rem', fontWeight: 'bold' }}>
-        Import test
-      </p>
-      {log.map((l, i) => (
-        <p key={i} style={{
-          color: l.includes('FOUT') ? '#ff5252' : '#fff',
-          fontFamily: 'monospace',
-          fontSize: '0.85rem',
-          margin: '0.25rem 0',
-          wordBreak: 'break-all',
-        }}>
-          {l}
-        </p>
-      ))}
-    </div>
-  );
+  return <ScanPageClient />;
 }
