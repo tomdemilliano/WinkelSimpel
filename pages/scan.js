@@ -1,11 +1,10 @@
 /**
- * pages/scan.js — stap voor stap flow test
- * Gebruik dynamic import met ssr:false om client-only rendering te forceren
+ * pages/scan.js — Winkel Simpel
+ * SSR uitgeschakeld — Firebase werkt alleen client-side
  */
 
 import dynamic from 'next/dynamic';
 
-// Laad de echte component alleen client-side — Firebase werkt niet server-side
 const ScanPageClient = dynamic(() => import('../components/ScanPageClient'), {
   ssr: false,
   loading: () => (
