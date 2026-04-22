@@ -20,7 +20,6 @@ import { signInAnonymously, getIdToken } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { validateQrToken, saveShopperSession } from '../lib/auth';
 import { parseQrQuery } from '../lib/qr';
-import { ShoppingListFactory } from '../lib/dbSchema';
 
 export default function ScanPageClient() {
   const router = useRouter();
@@ -114,26 +113,26 @@ export default function ScanPageClient() {
         body: JSON.stringify({ orgId, memberId: member.memberId }),
       });
 
+      const claimsData = await res.json();
       if (!res.ok) {
-        const d = await res.json();
-        setErrorMessage(d.message || 'Inloggen mislukt.');
+        setErrorMessage(claimsData.message || 'Inloggen mislukt.');
         setStatus('error');
         return;
       }
 
-      // Force token refresh en wacht zodat Firestore de nieuwe claims herkent
+      // Force token refresh zodat Firestore de nieuwe claims herkent
       await anonCred.user.getIdToken(true);
-      await new Promise(resolve => setTimeout(resolve, 1500));
 
+      // Sessie opslaan
       saveShopperSession({
         orgId,
         memberId: member.memberId,
         firstName: member.firstName,
       });
 
-      const listSnap = await ShoppingListFactory.getActiveForMember(orgId, member.memberId);
-      if (!listSnap.empty) {
-        const listId = listSnap.docs[0].id;
+      // listId komt uit de API response (server-side opgehaald, geen Firestore rules nodig)
+      const listId = claimsData.listId;
+      if (listId) {
         router.replace(`/shop/${listId}?org=${orgId}&token=${token}`);
       } else {
         setStatus('no-list');
