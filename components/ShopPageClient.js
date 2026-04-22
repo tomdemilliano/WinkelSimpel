@@ -75,6 +75,8 @@ export default function ShopPageClient() {
       }
 
       await cred.user.getIdToken(true);
+      // Wacht zodat Firestore de nieuwe claims herkent
+      await new Promise(resolve => setTimeout(resolve, 1500));
       saveShopperSession({ orgId, memberId: member.memberId, firstName: member.firstName });
       setShopperName(member.firstName || '');
       await loadItems(orgId, listId);
