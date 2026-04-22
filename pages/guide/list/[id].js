@@ -428,57 +428,65 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
           placeholder="Zoeken..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ ...styles.searchInput, marginBottom: '0.75rem' }}
+          style={{ ...styles.searchInput, marginBottom: '0.75rem', flexShrink: 0 }}
         />
 
-        {loading ? (
-          <p style={styles.hint}>Laden...</p>
-        ) : filtered.length === 0 ? (
-          <p style={styles.hint}>
-            {search ? 'Geen producten gevonden.' : 'Alle producten zijn al toegevoegd.'}
-          </p>
-        ) : (
-          <div style={styles.pickerList}>
-            {filtered.map((product) => {
-              const isSelected = !!selected.find((p) => p.id === product.id);
-              return (
-                <div
-                  key={product.id}
-                  style={{
-                    ...styles.pickerRow,
-                    backgroundColor: isSelected ? '#E8F5E9' : '#fff',
-                    borderColor: isSelected ? '#4CAF50' : '#eee',
-                  }}
-                  onClick={() => toggleProduct(product)}
-                >
-                  <div style={styles.pickerImageWrapper}>
-                    {product.imageUrl ? (
-                      <img src={product.imageUrl} alt={product.name} style={styles.itemImage} />
-                    ) : (
-                      <div style={styles.itemImagePlaceholder}>🛍️</div>
-                    )}
+        {/* Scrollbare lijst met vaste hoogte */}
+        <div style={styles.pickerScrollArea}>
+          {loading ? (
+            <p style={styles.hint}>Laden...</p>
+          ) : filtered.length === 0 ? (
+            <p style={styles.hint}>
+              {search ? 'Geen producten gevonden.' : 'Alle producten zijn al toegevoegd.'}
+            </p>
+          ) : (
+            <div style={styles.pickerList}>
+              {filtered.map((product) => {
+                const isSelected = !!selected.find((p) => p.id === product.id);
+                return (
+                  <div
+                    key={product.id}
+                    style={{
+                      ...styles.pickerRow,
+                      backgroundColor: isSelected ? '#E8F5E9' : '#fff',
+                      borderColor: isSelected ? '#4CAF50' : '#eee',
+                    }}
+                    onClick={() => toggleProduct(product)}
+                  >
+                    <div style={styles.pickerImageWrapper}>
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt={product.name} style={styles.itemImage} />
+                      ) : (
+                        <div style={styles.itemImagePlaceholder}>🛍️</div>
+                      )}
+                    </div>
+                    <p style={styles.pickerName}>{product.name}</p>
+                    <div style={{
+                      ...styles.checkbox,
+                      backgroundColor: isSelected ? '#4CAF50' : '#fff',
+                      borderColor: isSelected ? '#4CAF50' : '#ccc',
+                    }}>
+                      {isSelected && <span style={styles.checkmark}>✓</span>}
+                    </div>
                   </div>
-                  <p style={styles.pickerName}>{product.name}</p>
-                  <div style={{
-                    ...styles.checkbox,
-                    backgroundColor: isSelected ? '#4CAF50' : '#fff',
-                    borderColor: isSelected ? '#4CAF50' : '#ccc',
-                  }}>
-                    {isSelected && <span style={styles.checkmark}>✓</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-        {selected.length > 0 && (
-          <button style={styles.addButton} onClick={() => onAdd(selected)}>
-            {selected.length === 1
-              ? '1 product toevoegen'
-              : `${selected.length} producten toevoegen`}
-          </button>
-        )}
+        {/* Knop altijd zichtbaar onderaan */}
+        <div style={styles.pickerFooter}>
+          {selected.length > 0 ? (
+            <button style={styles.addButton} onClick={() => onAdd(selected)}>
+              {selected.length === 1 ? '1 product toevoegen' : `${selected.length} producten toevoegen`}
+            </button>
+          ) : (
+            <p style={{ ...styles.hint, textAlign: 'center', margin: 0 }}>
+              Tik op een product om het te selecteren
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -752,7 +760,9 @@ const styles = {
     width: '100%',
     maxWidth: '600px',
     maxHeight: '85vh',
-    overflowY: 'auto',
+    overflowY: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
   },
   modalHeader: {
     display: 'flex',
@@ -829,6 +839,17 @@ const styles = {
     fontSize: '0.75rem',
     color: '#fff',
     fontWeight: '700',
+  },
+  pickerScrollArea: {
+    flex: 1,
+    overflowY: 'auto',
+    minHeight: 0,
+    marginBottom: '0.75rem',
+  },
+  pickerFooter: {
+    flexShrink: 0,
+    paddingTop: '0.5rem',
+    borderTop: '1px solid #f0f0f0',
   },
   addButton: {
     width: '100%',
