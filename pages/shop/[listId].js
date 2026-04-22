@@ -1,67 +1,143 @@
 /**
  * pages/shop/[listId].js — Winkel Simpel
  *
- * The shopper interface. Designed for people with disabilities.
+ * The shopper interface. No withShopperGuard HOC needed — this page
+ * handles its own auth by reading the localStorage session OR by
+ * processing org/token URL parameters directly if no session exists.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { withShopperGuard } from '../../lib/auth';
-import { ShoppingListFactory, ListItemFactory } from '../../lib/dbSchema';
+import { signInAnonymously, getIdToken } from 'firebase/auth';
+import { auth } from '../../lib/firebase';
+import { saveShopperSession, getShopperSession } from '../../lib/auth';
+import { ShoppingListFactory, ListItemFactory, MemberFactory } from '../../lib/dbSchema';
 
-function ShopPage({ shopperSession }) {
+export default function ShopPage() {
   const router = useRouter();
-  const { listId } = router.query;
-  const { orgId, firstName } = shopperSession;
+  const { listId, org, token } = router.query;
 
+  // 'booting' | 'loading' | 'ready' | 'completed' | 'error' | 'no-session'
+  const [phase, setPhase] = useState('booting');
+  const [errorMsg, setErrorMsg] = useState('');
   const [items, setItems] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [marking, setMarking] = useState(false);
-  const [debugLogs, setDebugLogs] = useState([]);
+  const [shopperName, setShopperName] = useState('');
 
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
-
-  function addLog(msg) {
-    console.log('[shop]', msg);
-    setDebugLogs(prev => [...prev.slice(-8), msg]);
-  }
+  const bootedRef = useRef(false);
 
   useEffect(() => {
-    addLog('mount — isReady:' + router.isReady + ' listId:' + listId + ' orgId:' + orgId);
-    if (!router.isReady || !listId) return;
-    loadItems();
-  }, [router.isReady, listId]);
+    if (!router.isReady) return;
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+    boot();
+  }, [router.isReady]);
 
-  async function loadItems() {
-    setLoading(true);
-    setError('');
+  async function boot() {
     try {
-      addLog('loading items for list:' + listId);
+      // Check if we have a valid localStorage session
+      const session = getShopperSession();
+
+      if (session?.orgId && session?.memberId) {
+        // Session exists — load the list directly
+        setShopperName(session.firstName || '');
+        await loadItems(session.orgId, listId);
+      } else if (org && token) {
+        // No session but URL has org+token — authenticate first
+        await authenticateAndLoad(org, token);
+      } else {
+        // No session, no token — can't proceed
+        setPhase('no-session');
+      }
+    } catch (err) {
+      console.error('[shop] boot error:', err);
+      setErrorMsg(`Opstartfout: ${err.message}`);
+      setPhase('error');
+    }
+  }
+
+  async function authenticateAndLoad(orgId, qrToken) {
+    setPhase('loading');
+    try {
+      // Validate QR token
+      const { MemberFactory } = await import('../../lib/dbSchema');
+      const snap = await MemberFactory.getByQrToken(orgId, qrToken);
+      if (snap.empty) {
+        setErrorMsg('Ongeldige QR-code. Vraag een nieuwe aan je begeleider.');
+        setPhase('error');
+        return;
+      }
+      const memberDoc = snap.docs[0];
+      const member = { memberId: memberDoc.id, ...memberDoc.data() };
+
+      // Sign in anonymously
+      const anonCred = await signInAnonymously(auth);
+      const idToken = await getIdToken(anonCred.user);
+
+      // Set custom claims
+      const res = await fetch('/api/shopper/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ orgId, memberId: member.memberId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setErrorMsg(data.message || 'Authenticatie mislukt.');
+        setPhase('error');
+        return;
+      }
+
+      // Force token refresh
+      await anonCred.user.getIdToken(true);
+
+      // Save session
+      saveShopperSession({
+        orgId,
+        memberId: member.memberId,
+        firstName: member.firstName,
+      });
+      setShopperName(member.firstName || '');
+
+      // Load items
+      await loadItems(orgId, listId);
+    } catch (err) {
+      console.error('[shop] authenticateAndLoad error:', err);
+      setErrorMsg(`Fout: ${err.message}`);
+      setPhase('error');
+    }
+  }
+
+  async function loadItems(orgId, listId) {
+    setPhase('loading');
+    try {
       const snap = await ListItemFactory.getAll(orgId, listId);
       const allItems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      addLog('loaded ' + allItems.length + ' items');
 
       setItems(allItems);
 
       if (allItems.length === 0 || allItems.every((i) => i.checked)) {
         setCompleted(true);
       } else {
-        const firstUnchecked = allItems.findIndex((item) => !item.checked);
+        const firstUnchecked = allItems.findIndex((i) => !i.checked);
         setCurrentIndex(firstUnchecked >= 0 ? firstUnchecked : 0);
       }
+      setPhase('ready');
     } catch (err) {
-      addLog('ERROR: ' + err.code + ' — ' + err.message);
+      console.error('[shop] loadItems error:', err.code, err.message);
       if (err.code === 'permission-denied') {
-        setError('Geen toegang. Scan opnieuw je QR-code.');
+        setErrorMsg('Geen toegang. Scan opnieuw je QR-code.');
       } else {
-        setError('Fout: ' + err.message);
+        setErrorMsg(`Kon het lijstje niet laden: ${err.message}`);
       }
-    } finally {
-      setLoading(false);
+      setPhase('error');
     }
   }
 
@@ -70,6 +146,9 @@ function ShopPage({ shopperSession }) {
     const item = items[currentIndex];
     if (!item || item.checked) return;
 
+    const session = getShopperSession();
+    if (!session) return;
+
     setMarking(true);
     const updatedItems = items.map((i, idx) =>
       idx === currentIndex ? { ...i, checked: true } : i
@@ -77,9 +156,9 @@ function ShopPage({ shopperSession }) {
     setItems(updatedItems);
 
     try {
-      await ListItemFactory.check(orgId, listId, item.id);
+      await ListItemFactory.check(session.orgId, listId, item.id);
     } catch (err) {
-      console.error('[shop] Failed to check item:', err);
+      console.error('[shop] check error:', err);
       setItems(items);
       setMarking(false);
       return;
@@ -89,21 +168,18 @@ function ShopPage({ shopperSession }) {
     if (allDone) {
       setTimeout(async () => {
         try {
-          await ShoppingListFactory.complete(orgId, listId);
+          await ShoppingListFactory.complete(session.orgId, listId);
         } catch (err) {
-          console.error('[shop] Failed to complete list:', err);
+          console.error('[shop] complete error:', err);
         }
         setCompleted(true);
         setMarking(false);
       }, 400);
     } else {
-      const nextIndex = updatedItems.findIndex(
-        (item, idx) => idx > currentIndex && !item.checked
-      );
-      const fallbackIndex = updatedItems.findIndex((item) => !item.checked);
-      const goTo = nextIndex >= 0 ? nextIndex : fallbackIndex;
+      const next = updatedItems.findIndex((i, idx) => idx > currentIndex && !i.checked);
+      const fallback = updatedItems.findIndex((i) => !i.checked);
       setTimeout(() => {
-        setCurrentIndex(goTo);
+        setCurrentIndex(next >= 0 ? next : fallback);
         setMarking(false);
       }, 300);
     }
@@ -134,28 +210,42 @@ function ShopPage({ shopperSession }) {
     touchStartY.current = null;
   }
 
-  // Loading
-  if (loading) {
+  // Booting or loading
+  if (phase === 'booting' || phase === 'loading') {
     return (
       <div style={styles.fullScreen}>
-        <div style={styles.loadingSpinner} />
-        <p style={styles.loadingText}>Lijstje laden...</p>
-        <div style={styles.debugPanel}>
-          {debugLogs.map((log, i) => <p key={i} style={styles.debugLine}>{log}</p>)}
+        <div style={styles.spinner} />
+        <p style={styles.loadingText}>
+          {phase === 'booting' ? 'Opstarten...' : 'Lijstje laden...'}
+        </p>
+      </div>
+    );
+  }
+
+  // No session
+  if (phase === 'no-session') {
+    return (
+      <div style={styles.fullScreen}>
+        <div style={styles.messageContent}>
+          <p style={styles.messageIcon}>🔑</p>
+          <p style={styles.messageText}>Scan je QR-kaartje om verder te gaan.</p>
+          <button style={styles.actionButton} onClick={() => router.push('/scan')}>
+            QR-code scannen
+          </button>
         </div>
       </div>
     );
   }
 
   // Error
-  if (error) {
+  if (phase === 'error') {
     return (
       <div style={styles.fullScreen}>
-        <div style={styles.errorContent}>
-          <p style={styles.errorIcon}>😕</p>
-          <p style={styles.errorText}>{error}</p>
-          <button style={styles.retryButton} onClick={loadItems}>
-            Opnieuw proberen
+        <div style={styles.messageContent}>
+          <p style={styles.messageIcon}>😕</p>
+          <p style={styles.messageText}>{errorMsg}</p>
+          <button style={styles.actionButton} onClick={() => router.push('/scan')}>
+            Opnieuw scannen
           </button>
         </div>
       </div>
@@ -164,29 +254,24 @@ function ShopPage({ shopperSession }) {
 
   // Completed
   if (completed) {
-    return <CompletionScreen firstName={firstName} />;
+    return <CompletionScreen firstName={shopperName} />;
   }
 
-  // Empty list
+  // Empty
   if (items.length === 0) {
     return (
       <div style={styles.fullScreen}>
-        <p style={styles.emptyText}>Er zijn nog geen producten op je lijstje.</p>
+        <p style={styles.loadingText}>Er zijn nog geen producten op je lijstje.</p>
       </div>
     );
   }
 
   const currentItem = items[currentIndex];
   const checkedCount = items.filter((i) => i.checked).length;
-  const totalCount = items.length;
-  const progressPct = (checkedCount / totalCount) * 100;
+  const progressPct = (checkedCount / items.length) * 100;
 
   return (
-    <div
-      style={styles.fullScreen}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div style={styles.fullScreen} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {/* Progress bar */}
       <div style={styles.progressBarWrapper}>
         <div style={{ ...styles.progressBarFill, width: `${progressPct}%` }} />
@@ -194,18 +279,13 @@ function ShopPage({ shopperSession }) {
 
       {/* Counter */}
       <div style={styles.counter}>
-        <span style={styles.counterText}>{checkedCount + 1} / {totalCount}</span>
+        <span style={styles.counterText}>{checkedCount + 1} / {items.length}</span>
       </div>
 
-      {/* Product image */}
+      {/* Image */}
       <div style={styles.imageContainer}>
         {currentItem.productImageUrl ? (
-          <img
-            key={currentItem.id}
-            src={currentItem.productImageUrl}
-            alt={currentItem.productName}
-            style={styles.productImage}
-          />
+          <img key={currentItem.id} src={currentItem.productImageUrl} alt={currentItem.productName} style={styles.productImage} />
         ) : (
           <div style={styles.imagePlaceholder}>
             <svg width="120" height="120" viewBox="0 0 24 24" fill="none">
@@ -232,39 +312,22 @@ function ShopPage({ shopperSession }) {
 
       {/* Navigation */}
       <div style={styles.navRow}>
-        <button
-          style={{ ...styles.navButton, opacity: currentIndex === 0 ? 0.2 : 1 }}
-          onClick={goPrev}
-          disabled={currentIndex === 0}
-        >←</button>
-
+        <button style={{ ...styles.navButton, opacity: currentIndex === 0 ? 0.2 : 1 }} onClick={goPrev} disabled={currentIndex === 0}>←</button>
         <div style={styles.dots}>
           {items.map((item, idx) => (
-            <div
-              key={item.id}
-              style={{
-                ...styles.dot,
-                backgroundColor: item.checked ? '#4CAF50' : idx === currentIndex ? '#1a1a1a' : '#ddd',
-                transform: idx === currentIndex ? 'scale(1.3)' : 'scale(1)',
-              }}
-            />
+            <div key={item.id} style={{
+              ...styles.dot,
+              backgroundColor: item.checked ? '#4CAF50' : idx === currentIndex ? '#1a1a1a' : '#ddd',
+              transform: idx === currentIndex ? 'scale(1.3)' : 'scale(1)',
+            }} />
           ))}
         </div>
-
-        <button
-          style={{ ...styles.navButton, opacity: currentIndex === items.length - 1 ? 0.2 : 1 }}
-          onClick={goNext}
-          disabled={currentIndex === items.length - 1}
-        >→</button>
+        <button style={{ ...styles.navButton, opacity: currentIndex === items.length - 1 ? 0.2 : 1 }} onClick={goNext} disabled={currentIndex === items.length - 1}>→</button>
       </div>
 
       {/* Action button */}
       {!currentItem.checked ? (
-        <button
-          style={{ ...styles.takenButton, opacity: marking ? 0.7 : 1, transform: marking ? 'scale(0.97)' : 'scale(1)' }}
-          onClick={handleTaken}
-          disabled={marking}
-        >
+        <button style={{ ...styles.takenButton, opacity: marking ? 0.7 : 1 }} onClick={handleTaken} disabled={marking}>
           ✓ Genomen!
         </button>
       ) : (
@@ -297,8 +360,6 @@ function CompletionScreen({ firstName }) {
   );
 }
 
-export default withShopperGuard(ShopPage);
-
 const styles = {
   fullScreen: {
     position: 'fixed',
@@ -312,7 +373,7 @@ const styles = {
     fontFamily: 'system-ui, sans-serif',
     userSelect: 'none',
   },
-  loadingSpinner: {
+  spinner: {
     width: '60px',
     height: '60px',
     border: '6px solid #eee',
@@ -326,7 +387,7 @@ const styles = {
     color: '#aaa',
     margin: 0,
   },
-  errorContent: {
+  messageContent: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -334,18 +395,18 @@ const styles = {
     padding: '2rem',
     textAlign: 'center',
   },
-  errorIcon: {
+  messageIcon: {
     fontSize: '4rem',
     margin: 0,
   },
-  errorText: {
-    fontSize: '1.1rem',
-    color: '#c62828',
+  messageText: {
+    fontSize: '1.2rem',
+    color: '#555',
     maxWidth: '300px',
     lineHeight: '1.6',
     margin: 0,
   },
-  retryButton: {
+  actionButton: {
     padding: '1rem 2rem',
     backgroundColor: '#4CAF50',
     color: '#fff',
@@ -354,12 +415,6 @@ const styles = {
     fontSize: '1.1rem',
     fontWeight: '700',
     cursor: 'pointer',
-  },
-  emptyText: {
-    fontSize: '1.25rem',
-    color: '#aaa',
-    textAlign: 'center',
-    padding: '2rem',
   },
   progressBarWrapper: {
     position: 'absolute',
@@ -390,13 +445,12 @@ const styles = {
   imageContainer: {
     flex: 1,
     position: 'relative',
-    width: '100%',
+    width: 'calc(100% - 1.5rem)',
     overflow: 'hidden',
     margin: '2.5rem 0.75rem 0.75rem',
     borderRadius: '20px',
     backgroundColor: '#f9f9f9',
     minHeight: 0,
-    alignSelf: 'stretch',
   },
   productImage: {
     width: '100%',
@@ -540,9 +594,7 @@ const styles = {
     gap: '1rem',
     marginBottom: '0.5rem',
   },
-  bigEmoji: {
-    fontSize: '5rem',
-  },
+  bigEmoji: { fontSize: '5rem' },
   completionMessage: {
     fontSize: '3rem',
     fontWeight: '900',
@@ -565,22 +617,5 @@ const styles = {
   completionStars: {
     fontSize: '2.5rem',
     marginTop: '0.5rem',
-  },
-  debugPanel: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    padding: '0.5rem',
-    maxHeight: '40vh',
-    overflowY: 'auto',
-  },
-  debugLine: {
-    color: '#00ff88',
-    fontSize: '0.7rem',
-    fontFamily: 'monospace',
-    margin: '0.15rem 0',
-    wordBreak: 'break-all',
   },
 };
