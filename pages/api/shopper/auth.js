@@ -1,13 +1,12 @@
 /**
  * pages/api/shopper/auth.js — Winkel Simpel
  *
- * Validates QR token, sets custom claims on anonymous user,
- * and returns the active shopping list ID — all server-side.
- * This avoids Firestore permission issues on the client.
+ * Valideert QR token en geeft de actieve listId terug.
+ * Geen Firebase Auth nodig — de QR token is de authenticatie.
+ * Gebruikt Admin SDK — geen Firestore rules.
  */
 
 import { initializeApp, getApps, getApp, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
 const ADMIN_APP_NAME = 'winkel-simpel-admin';
@@ -16,7 +15,6 @@ function parsePrivateKey(raw) {
   if (!raw) throw new Error('FIREBASE_ADMIN_PRIVATE_KEY is not set');
   let key = raw.trim().replace(/^["']/g, '').replace(/["']$/g, '');
   if (!key.includes('\n')) key = key.replace(/\\n/g, '\n');
-  if (!key.includes('-----BEGIN PRIVATE KEY-----')) throw new Error('Invalid PEM key');
   return key;
 }
 
@@ -37,51 +35,52 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Methode niet toegestaan.' });
   }
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Geen token meegegeven.' });
-  }
-
-  const { orgId, memberId } = req.body;
-  if (!orgId || !memberId) {
-    return res.status(400).json({ message: 'orgId en memberId zijn verplicht.' });
+  const { orgId, token } = req.body;
+  if (!orgId || !token) {
+    return res.status(400).json({ message: 'orgId en token zijn verplicht.' });
   }
 
   try {
-    const adminAuth = getAuth(getAdminApp());
-    const adminDb = getFirestore(getAdminApp());
+    const db = getFirestore(getAdminApp());
 
-    // Verify the anonymous user's ID token
-    const idToken = authHeader.split('Bearer ')[1];
-    const decoded = await adminAuth.verifyIdToken(idToken);
+    // Stap 1: valideer QR token
+    const membersSnap = await db
+      .collection('organizations').doc(orgId)
+      .collection('members')
+      .where('qrToken', '==', token)
+      .where('role', '==', 'shopper')
+      .limit(1)
+      .get();
 
-    if (!decoded.firebase?.sign_in_provider?.includes('anonymous')) {
-      return res.status(403).json({ message: 'Alleen anonieme gebruikers zijn toegestaan.' });
+    if (membersSnap.empty) {
+      return res.status(403).json({ message: 'Ongeldige QR-code. Vraag een nieuwe aan je begeleider.' });
     }
 
-    // Set custom claims
-    await adminAuth.setCustomUserClaims(decoded.uid, {
-      role: 'shopper',
-      orgId,
-      memberId,
-    });
+    const member = { id: membersSnap.docs[0].id, ...membersSnap.docs[0].data() };
 
-    // Find the active shopping list server-side (bypasses Firestore rules)
-    const listsSnap = await adminDb
-      .collection('organizations')
-      .doc(orgId)
+    // Stap 2: zoek actief lijstje
+    const listsSnap = await db
+      .collection('organizations').doc(orgId)
       .collection('shoppingLists')
       .where('assignedTo.type', '==', 'member')
-      .where('assignedTo.id', '==', memberId)
+      .where('assignedTo.id', '==', member.id)
       .where('status', '==', 'active')
       .limit(1)
       .get();
 
     const listId = listsSnap.empty ? null : listsSnap.docs[0].id;
 
-    return res.status(200).json({ success: true, listId });
+    return res.status(200).json({
+      success: true,
+      listId,
+      member: {
+        id: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+      },
+    });
   } catch (err) {
-    console.error('shopper-auth error:', err.message);
-    return res.status(500).json({ message: `Fout: ${err.message}` });
+    console.error('shopper/auth error:', err.message);
+    return res.status(500).json({ message: `Serverfout: ${err.message}` });
   }
 }
