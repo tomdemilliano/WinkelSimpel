@@ -183,23 +183,26 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef();
 
-  async function handleImportUrl() {
-    if (!importUrl.trim()) return;
+  async function handleImport(isBarcode = false) {
+    const value = importUrl.trim();
+    if (!value) return;
     setImporting(true);
     setError('');
     try {
+      const body = isBarcode ? { barcode: value } : { url: value };
       const res = await fetch('/api/import-product', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: importUrl.trim() }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message); setImporting(false); return; }
+      if (data.hint) { setError(data.hint); }
       if (data.name) setName(data.name);
       if (data.imageUrl) {
         setImportedImageUrl(data.imageUrl);
         setImagePreview(data.imageUrl);
-        setImageFile(null); // gebruik de geïmporteerde URL, geen bestandsupload
+        setImageFile(null);
       }
       setImportUrl('');
     } catch (err) {
@@ -299,28 +302,31 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
 
         <form onSubmit={handleSubmit} style={styles.form}>
 
-          {/* URL import */}
+          {/* URL / barcode import */}
           <div style={styles.importSection}>
-            <label style={styles.label}>Importeren vanuit webshop (optioneel)</label>
+            <label style={styles.label}>Importeren vanuit webshop of barcode (optioneel)</label>
             <div style={styles.importRow}>
               <input
-                type="url"
+                type="text"
                 value={importUrl}
                 onChange={e => setImportUrl(e.target.value)}
                 style={{ ...styles.input, flex: 1, fontSize: '0.85rem' }}
-                placeholder="https://www.delhaize.be/nl/p/..."
+                placeholder="URL of barcode (bv. 5410002050042)"
               />
               <button
                 type="button"
-                onClick={handleImportUrl}
+                onClick={() => {
+                  const isBarcode = /^\d{8,14}$/.test(importUrl.trim());
+                  handleImport(isBarcode);
+                }}
                 disabled={importing || !importUrl.trim()}
                 style={{ ...styles.importButton, opacity: importing || !importUrl.trim() ? 0.6 : 1 }}
               >
-                {importing ? '...' : '↓ Haal op'}
+                {importing ? '...' : '↓ Ophalen'}
               </button>
             </div>
             <p style={styles.importHint}>
-              Plak een link van Delhaize, Colruyt, Albert Heijn, ... om naam en foto automatisch in te vullen.
+              Plak een productlink (Delhaize, Colruyt, Albert Heijn, ...) of scan/typ de barcode van het product.
             </p>
           </div>
 
