@@ -1,39 +1,27 @@
 /**
  * pages/api/shopper/auth.js — Winkel Simpel
  *
- * Server-side API route that assigns orgId and memberId as custom claims
- * to an anonymous Firebase Auth user after a successful QR scan.
- *
- * Flow:
- *   1. Client validates QR token against Firestore (client-side)
- *   2. Client signs in anonymously via Firebase Auth (client-side)
- *   3. Client calls this route with the anonymous user's ID token
- *   4. This route sets custom claims: { role: 'shopper', orgId, memberId }
- *   5. Client forces a token refresh to get the new claims
- *   6. Firestore rules now recognize the shopper via orgId claim
+ * Validates QR token, sets custom claims on anonymous user,
+ * and returns the active shopping list ID — all server-side.
+ * This avoids Firestore permission issues on the client.
  */
 
 import { initializeApp, getApps, getApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const ADMIN_APP_NAME = 'winkel-simpel-admin';
 
 function parsePrivateKey(raw) {
   if (!raw) throw new Error('FIREBASE_ADMIN_PRIVATE_KEY is not set');
   let key = raw.trim().replace(/^["']/g, '').replace(/["']$/g, '');
-  if (!key.includes('\n')) {
-    key = key.replace(/\\n/g, '\n');
-  }
-  if (!key.includes('-----BEGIN PRIVATE KEY-----')) {
-    throw new Error('FIREBASE_ADMIN_PRIVATE_KEY is not a valid PEM key');
-  }
+  if (!key.includes('\n')) key = key.replace(/\\n/g, '\n');
+  if (!key.includes('-----BEGIN PRIVATE KEY-----')) throw new Error('Invalid PEM key');
   return key;
 }
 
 function getAdminApp() {
-  try {
-    return getApp(ADMIN_APP_NAME);
-  } catch {
+  try { return getApp(ADMIN_APP_NAME); } catch {
     return initializeApp({
       credential: cert({
         projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
@@ -61,24 +49,37 @@ export default async function handler(req, res) {
 
   try {
     const adminAuth = getAuth(getAdminApp());
+    const adminDb = getFirestore(getAdminApp());
 
     // Verify the anonymous user's ID token
     const idToken = authHeader.split('Bearer ')[1];
     const decoded = await adminAuth.verifyIdToken(idToken);
 
-    // Only allow anonymous users (not existing guides/admins)
     if (!decoded.firebase?.sign_in_provider?.includes('anonymous')) {
       return res.status(403).json({ message: 'Alleen anonieme gebruikers zijn toegestaan.' });
     }
 
-    // Set custom claims on the anonymous user
+    // Set custom claims
     await adminAuth.setCustomUserClaims(decoded.uid, {
       role: 'shopper',
       orgId,
       memberId,
     });
 
-    return res.status(200).json({ success: true });
+    // Find the active shopping list server-side (bypasses Firestore rules)
+    const listsSnap = await adminDb
+      .collection('organizations')
+      .doc(orgId)
+      .collection('shoppingLists')
+      .where('assignedTo.type', '==', 'member')
+      .where('assignedTo.id', '==', memberId)
+      .where('status', '==', 'active')
+      .limit(1)
+      .get();
+
+    const listId = listsSnap.empty ? null : listsSnap.docs[0].id;
+
+    return res.status(200).json({ success: true, listId });
   } catch (err) {
     console.error('shopper-auth error:', err.message);
     return res.status(500).json({ message: `Fout: ${err.message}` });
