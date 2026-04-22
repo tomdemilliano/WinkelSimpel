@@ -10,29 +10,39 @@
  * Required server-side environment variables:
  *   FIREBASE_ADMIN_PROJECT_ID
  *   FIREBASE_ADMIN_CLIENT_EMAIL
- *   FIREBASE_ADMIN_PRIVATE_KEY  (paste with real newlines in Vercel, not \n)
+ *   FIREBASE_ADMIN_PRIVATE_KEY
  *   NEXT_PUBLIC_SETUP_KEY  (remove after first use)
  */
 
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { initializeApp, getApps, getApp, deleteApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
+const ADMIN_APP_NAME = 'winkel-simpel-admin';
+
 function parsePrivateKey(raw) {
+  console.log('[setup] parsePrivateKey: raw length =', raw?.length);
+  console.log('[setup] parsePrivateKey: starts with =', raw?.trim().substring(0, 30));
+
   if (!raw) throw new Error('FIREBASE_ADMIN_PRIVATE_KEY is not set');
 
   // Remove surrounding quotes if present
   let key = raw.trim().replace(/^["']/g, '').replace(/["']$/g, '');
 
-  // Vercel may store the key with real newlines (after auto-converting \n on paste)
-  // or with literal \n sequences. Handle both cases:
+  // Handle both formats: real newlines or literal \n
   if (!key.includes('\n')) {
-    // No real newlines found — replace literal \n with real newlines
+    console.log('[setup] parsePrivateKey: no real newlines found, replacing \\n');
     key = key.replace(/\\n/g, '\n');
+  } else {
+    console.log('[setup] parsePrivateKey: real newlines found, using as-is');
   }
 
-  // Verify the key has the expected PEM structure
-  if (!key.includes('-----BEGIN PRIVATE KEY-----')) {
+  const hasBegin = key.includes('-----BEGIN PRIVATE KEY-----');
+  const hasEnd = key.includes('-----END PRIVATE KEY-----');
+  const lineCount = key.split('\n').length;
+  console.log('[setup] parsePrivateKey: hasBegin =', hasBegin, '| hasEnd =', hasEnd, '| lines =', lineCount);
+
+  if (!hasBegin || !hasEnd) {
     throw new Error('FIREBASE_ADMIN_PRIVATE_KEY does not look like a valid PEM key');
   }
 
@@ -40,15 +50,30 @@ function parsePrivateKey(raw) {
 }
 
 function getAdminApp() {
-  if (getApps().length > 0) return getApps()[0];
+  console.log('[setup] getAdminApp: checking env vars...');
+  console.log('[setup] PROJECT_ID =', process.env.FIREBASE_ADMIN_PROJECT_ID);
+  console.log('[setup] CLIENT_EMAIL =', process.env.FIREBASE_ADMIN_CLIENT_EMAIL);
+  console.log('[setup] PRIVATE_KEY set =', !!process.env.FIREBASE_ADMIN_PRIVATE_KEY);
 
-  return initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-      privateKey: parsePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY),
-    }),
-  });
+  const privateKey = parsePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY);
+
+  // Use a named app to avoid conflicts with cached default app instances
+  // Delete and recreate if it already exists to ensure fresh credentials
+  try {
+    const existing = getApp(ADMIN_APP_NAME);
+    console.log('[setup] getAdminApp: found existing named app, reusing');
+    return existing;
+  } catch {
+    // App does not exist yet — initialize it
+    console.log('[setup] getAdminApp: initializing new named app');
+    return initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+        privateKey,
+      }),
+    }, ADMIN_APP_NAME);
+  }
 }
 
 export default async function handler(req, res) {
@@ -57,11 +82,14 @@ export default async function handler(req, res) {
   }
 
   const SETUP_KEY = process.env.NEXT_PUBLIC_SETUP_KEY;
+  console.log('[setup] SETUP_KEY set =', !!SETUP_KEY);
+
   if (!SETUP_KEY) {
     return res.status(403).json({ message: 'Setup is niet actief.' });
   }
 
   const { setupKey, firstName, lastName, email, password, orgName } = req.body;
+  console.log('[setup] body received: firstName =', firstName, '| email =', email, '| orgName =', orgName);
 
   if (setupKey !== SETUP_KEY) {
     return res.status(403).json({ message: 'Ongeldige setup-sleutel.' });
@@ -76,12 +104,19 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('[setup] initializing admin app...');
     const adminApp = getAdminApp();
+    console.log('[setup] admin app initialized, getting auth and firestore...');
+
     const adminAuth = getAuth(adminApp);
     const adminDb = getFirestore(adminApp);
+    console.log('[setup] auth and firestore ready');
 
-    // Safety check: verify no users exist yet in Firebase Auth
+    // Safety check: verify no users exist yet
+    console.log('[setup] checking existing users...');
     const existingUsers = await adminAuth.listUsers(1);
+    console.log('[setup] existing user count =', existingUsers.users.length);
+
     if (existingUsers.users.length > 0) {
       return res.status(400).json({
         message: 'Er bestaat al een gebruiker. Setup kan maar één keer uitgevoerd worden.',
@@ -89,34 +124,39 @@ export default async function handler(req, res) {
     }
 
     // Create Firebase Auth user
+    console.log('[setup] creating auth user...');
     const userRecord = await adminAuth.createUser({
       email,
       password,
       displayName: `${firstName} ${lastName}`,
     });
+    console.log('[setup] auth user created, uid =', userRecord.uid);
 
     // Set custom claims
+    console.log('[setup] setting custom claims...');
     await adminAuth.setCustomUserClaims(userRecord.uid, {
       role: 'app_admin',
       orgId: null,
     });
+    console.log('[setup] custom claims set');
 
     let orgId = null;
 
-    // Optionally create the first organization
     if (orgName?.trim()) {
+      console.log('[setup] creating organization:', orgName.trim());
       const orgRef = await adminDb.collection('organizations').add({
         name: orgName.trim(),
         createdBy: userRecord.uid,
         createdAt: FieldValue.serverTimestamp(),
       });
       orgId = orgRef.id;
+      console.log('[setup] organization created, orgId =', orgId);
 
-      // Update claims with orgId
       await adminAuth.setCustomUserClaims(userRecord.uid, {
         role: 'app_admin',
         orgId,
       });
+      console.log('[setup] updated custom claims with orgId');
     }
 
     // Store member document
@@ -124,6 +164,7 @@ export default async function handler(req, res) {
       ? adminDb.collection('organizations').doc(orgId).collection('members')
       : adminDb.collection('admins');
 
+    console.log('[setup] writing member document...');
     await memberCollection.doc(userRecord.uid).set({
       role: 'app_admin',
       firstName,
@@ -134,6 +175,7 @@ export default async function handler(req, res) {
       createdBy: userRecord.uid,
       createdAt: FieldValue.serverTimestamp(),
     });
+    console.log('[setup] member document written — setup complete!');
 
     return res.status(200).json({
       uid: userRecord.uid,
@@ -142,11 +184,10 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    // Log the full error so it appears in Vercel's runtime logs
-    console.error('create-first-admin error:', {
+    console.error('[setup] ERROR:', {
       message: err.message,
       code: err.code,
-      stack: err.stack?.split('\n')[0],
+      stack: err.stack?.split('\n').slice(0, 3).join(' | '),
     });
 
     if (err.code === 'auth/email-already-exists') {
@@ -155,11 +196,7 @@ export default async function handler(req, res) {
     if (err.code === 'auth/invalid-email') {
       return res.status(400).json({ message: 'Ongeldig e-mailadres.' });
     }
-    if (err.message?.includes('FIREBASE_ADMIN_PRIVATE_KEY')) {
-      return res.status(500).json({ message: `Configuratiefout: ${err.message}` });
-    }
 
-    // Always return the actual error message so it shows up in the app UI
     return res.status(500).json({
       message: `Fout: ${err.message || 'Onbekende fout'}`,
     });
