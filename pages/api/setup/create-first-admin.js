@@ -142,7 +142,12 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('create-first-admin error:', err.message);
+    // Log the full error so it appears in Vercel's runtime logs
+    console.error('create-first-admin error:', {
+      message: err.message,
+      code: err.code,
+      stack: err.stack?.split('\n')[0],
+    });
 
     if (err.code === 'auth/email-already-exists') {
       return res.status(400).json({ message: 'Dit e-mailadres is al in gebruik.' });
@@ -154,6 +159,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: `Configuratiefout: ${err.message}` });
     }
 
-    return res.status(500).json({ message: 'Er is een fout opgetreden.' });
+    // Always return the actual error message so it shows up in the app UI
+    return res.status(500).json({
+      message: `Fout: ${err.message || 'Onbekende fout'}`,
+    });
   }
 }
