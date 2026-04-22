@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../../lib/auth';
+import { buildQrUrl } from '../../../lib/qr';
 import {
   ShoppingListFactory,
   ListItemFactory,
@@ -277,6 +278,14 @@ function ListDetail({ claims }) {
           <div style={styles.activeBanner}>
             ✅ Dit lijstje is actief. De shopper kan het nu gebruiken.
           </div>
+          {list.assignedTo?.type === 'member' && (
+            <button
+              style={styles.qrButton}
+              onClick={() => router.push(`/guide/qr/${list.assignedTo.id}`)}
+            >
+              📱 QR-kaartje tonen
+            </button>
+          )}
           <button
             style={{ ...styles.deactivateButton, opacity: saving ? 0.7 : 1 }}
             onClick={handleDeactivate}
@@ -704,6 +713,16 @@ const styles = {
     borderRadius: '10px',
     fontSize: '1rem',
     fontWeight: '700',
+    cursor: 'pointer',
+  },
+  qrButton: {
+    padding: '0.75rem',
+    backgroundColor: '#E3F2FD',
+    color: '#1565C0',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.95rem',
+    fontWeight: '600',
     cursor: 'pointer',
   },
   deactivateButton: {
