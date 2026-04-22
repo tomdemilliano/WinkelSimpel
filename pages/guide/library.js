@@ -12,6 +12,35 @@ import { withRoleGuard, ROLES } from '../../lib/auth';
 import { ProductFactory, StorageFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
+// ProductImage — toont afbeelding of standaard winkeltas icon
+// ---------------------------------------------------------------------------
+function ProductImage({ url, alt, style, placeholderSize = '1.75rem' }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!url || failed) {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5' }}>
+        <svg width={placeholderSize === '1.75rem' ? 28 : 40} height={placeholderSize === '1.75rem' ? 28 : 40} viewBox="0 0 24 24" fill="none">
+          <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={url}
+      alt={alt || ''}
+      style={style}
+      onError={() => setFailed(true)}
+      referrerPolicy="no-referrer"
+      crossOrigin="anonymous"
+    />
+  );
+}
+
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 function ProductLibrary({ claims }) {
@@ -148,11 +177,7 @@ function ProductCard({ product, onEdit, onDelete }) {
   return (
     <div style={styles.card}>
       <div style={styles.cardImageWrapper}>
-        {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.name} style={styles.cardImage} />
-        ) : (
-          <div style={styles.cardImagePlaceholder}>🛍️</div>
-        )}
+        <ProductImage url={product.imageUrl} alt={product.name} style={styles.cardImage} />
       </div>
       <div style={styles.cardBody}>
         <p style={styles.cardName}>{product.name}</p>
@@ -334,7 +359,7 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
           {/* Image upload */}
           <div style={styles.imageUploadArea} onClick={() => fileInputRef.current.click()}>
             {imagePreview ? (
-              <img src={imagePreview} alt="Voorvertoning" style={styles.imagePreview} />
+              <img src={imagePreview} alt="Voorvertoning" style={styles.imagePreview} onError={(e) => { e.target.style.display='none'; }} referrerPolicy="no-referrer" />
             ) : (
               <div style={styles.imagePlaceholder}>
                 <span style={{ fontSize: '2.5rem' }}>📷</span>
