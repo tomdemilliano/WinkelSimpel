@@ -20,12 +20,18 @@ function ShopPage({ shopperSession }) {
   const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
 
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
 
+  function addLog(msg) {
+    console.log('[shop]', msg);
+    setDebugLogs(prev => [...prev.slice(-8), msg]);
+  }
+
   useEffect(() => {
-    // Wait for router to be ready and listId to be available
+    addLog('mount — isReady:' + router.isReady + ' listId:' + listId + ' orgId:' + orgId);
     if (!router.isReady || !listId) return;
     loadItems();
   }, [router.isReady, listId]);
@@ -34,10 +40,10 @@ function ShopPage({ shopperSession }) {
     setLoading(true);
     setError('');
     try {
-      console.log('[shop] loading items for list:', listId, 'org:', orgId);
+      addLog('loading items for list:' + listId);
       const snap = await ListItemFactory.getAll(orgId, listId);
       const allItems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      console.log('[shop] loaded', allItems.length, 'items');
+      addLog('loaded ' + allItems.length + ' items');
 
       setItems(allItems);
 
@@ -48,11 +54,11 @@ function ShopPage({ shopperSession }) {
         setCurrentIndex(firstUnchecked >= 0 ? firstUnchecked : 0);
       }
     } catch (err) {
-      console.error('[shop] Failed to load items:', err.code, err.message);
+      addLog('ERROR: ' + err.code + ' — ' + err.message);
       if (err.code === 'permission-denied') {
-        setError('Geen toegang tot dit lijstje. Scan opnieuw je QR-code.');
+        setError('Geen toegang. Scan opnieuw je QR-code.');
       } else {
-        setError(`Kon het lijstje niet laden: ${err.message}`);
+        setError('Fout: ' + err.message);
       }
     } finally {
       setLoading(false);
@@ -134,6 +140,9 @@ function ShopPage({ shopperSession }) {
       <div style={styles.fullScreen}>
         <div style={styles.loadingSpinner} />
         <p style={styles.loadingText}>Lijstje laden...</p>
+        <div style={styles.debugPanel}>
+          {debugLogs.map((log, i) => <p key={i} style={styles.debugLine}>{log}</p>)}
+        </div>
       </div>
     );
   }
@@ -545,5 +554,22 @@ const styles = {
   completionStars: {
     fontSize: '2.5rem',
     marginTop: '0.5rem',
+  },
+  debugPanel: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    padding: '0.5rem',
+    maxHeight: '40vh',
+    overflowY: 'auto',
+  },
+  debugLine: {
+    color: '#00ff88',
+    fontSize: '0.7rem',
+    fontFamily: 'monospace',
+    margin: '0.15rem 0',
+    wordBreak: 'break-all',
   },
 };
