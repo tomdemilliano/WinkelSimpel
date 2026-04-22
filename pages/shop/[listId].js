@@ -208,7 +208,11 @@ function ShopPage({ shopperSession }) {
           />
         ) : (
           <div style={styles.imagePlaceholder}>
-            <span style={styles.imagePlaceholderIcon}>🛍️</span>
+            <svg width="120" height="120" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="12" fill="#E8F5E9"/>
+              <path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm10 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-9.8-3h11.4c.7 0 1.4-.4 1.7-1l3.4-6.2A1 1 0 0023 6H5.2L4.3 4H1v2h2l3.6 7.6L5.2 16c-.5.8.1 2 1.3 2H21v-2H7.4l.8-1z" fill="#4CAF50"/>
+            </svg>
+            <p style={styles.imagePlaceholderText}>{currentItem.productName}</p>
           </div>
         )}
         {currentItem.checked && (
@@ -404,11 +408,18 @@ const styles = {
     width: '100%',
     height: '100%',
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: '1rem',
+    padding: '1.5rem',
   },
-  imagePlaceholderIcon: {
-    fontSize: '6rem',
+  imagePlaceholderText: {
+    fontSize: '1.5rem',
+    fontWeight: '700',
+    color: '#4CAF50',
+    textAlign: 'center',
+    margin: 0,
   },
   checkedOverlay: {
     position: 'absolute',
