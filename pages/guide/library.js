@@ -200,6 +200,7 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
   const [name, setName] = useState(product?.name || '');
   const [unit, setUnit] = useState(product?.unit || 'stuks');
   const [imageFile, setImageFile] = useState(null);
+  // imagePreview toont altijd de meest recente afbeelding (upload, import of bestaande URL)
   const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
   const [importedImageUrl, setImportedImageUrl] = useState(product?.imageUrl || '');
   const [manualImageUrl, setManualImageUrl] = useState('');
@@ -267,11 +268,14 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
         let imageUrl = product.imageUrl;
 
         if (imageFile) {
-          // Upload new image, delete old one
+          // Nieuwe afbeelding geüpload — upload naar Storage
           imageUrl = await StorageFactory.uploadProductImage(orgId, product.id, imageFile);
-          if (product.imageUrl) {
+          if (product.imageUrl && product.imageUrl.includes('firebasestorage')) {
             await StorageFactory.deleteByUrl(product.imageUrl).catch(() => {});
           }
+        } else if (importedImageUrl && importedImageUrl !== product.imageUrl) {
+          // Nieuwe URL ingevoerd via import of handmatig URL-veld
+          imageUrl = importedImageUrl;
         }
 
         await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl });
@@ -289,15 +293,15 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
           const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
           await ProductFactory.update(orgId, docRef.id, { imageUrl });
           onSave({ id: docRef.id, name: name.trim(), unit, imageUrl });
-        } else if (importedImageUrl) {
-          // Use imported URL directly — no upload needed
+        } else if (importedImageUrl?.trim()) {
+          // Gebruik geïmporteerde of handmatig ingevoerde URL
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
-            imageUrl: importedImageUrl,
+            imageUrl: importedImageUrl.trim(),
             unit,
             createdBy: claims.uid,
           });
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim() });
         } else {
           // No image — save with empty imageUrl
           const docRef = await ProductFactory.create(orgId, {
