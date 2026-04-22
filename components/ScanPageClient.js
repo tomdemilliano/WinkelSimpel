@@ -1,24 +1,12 @@
 /**
  * components/ScanPageClient.js — Winkel Simpel
  *
- * Scan pagina logica — client-side only (geen SSR).
- *
- * Flow bij URL params (?org=...&token=...):
- *   1. Valideer QR token
- *   2. Anoniem inloggen
- *   3. Custom claims instellen via API
- *   4. Token refresh
- *   5. Sessie opslaan
- *   6. Redirect naar actief lijstje
- *
- * Flow zonder params: toon camera scanner of handmatig invoer
+ * Scan pagina — geen directe Firestore toegang.
+ * Alles via /api/shopper/auth die Admin SDK gebruikt.
  */
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { signInAnonymously, getIdToken } from 'firebase/auth';
-import { auth } from '../lib/firebase';
-import { validateQrToken, saveShopperSession } from '../lib/auth';
 import { parseQrQuery } from '../lib/qr';
 
 export default function ScanPageClient() {
@@ -67,13 +55,13 @@ export default function ScanPageClient() {
               const orgId = url.searchParams.get('org');
               const token = url.searchParams.get('token');
               if (!orgId || !token) {
-                setErrorMessage('Ongeldige QR-code. Vraag een nieuwe aan je begeleider.');
+                setErrorMessage('Ongeldige QR-code.');
                 setStatus('error');
                 return;
               }
               handleToken(orgId, token);
             } catch {
-              setErrorMessage('Ongeldige QR-code. Vraag een nieuwe aan je begeleider.');
+              setErrorMessage('Ongeldige QR-code.');
               setStatus('error');
             }
           },
@@ -81,7 +69,7 @@ export default function ScanPageClient() {
         );
       } catch (err) {
         if (isMounted) {
-          setErrorMessage('Camera kon niet worden gestart: ' + err.message);
+          setErrorMessage('Camera fout: ' + err.message);
           setStatus('error');
         }
       }
@@ -97,49 +85,28 @@ export default function ScanPageClient() {
   async function handleToken(orgId, token) {
     setStatus('validating');
     try {
-      const member = await validateQrToken(orgId, token);
-      if (!member) {
-        setErrorMessage('Deze QR-code is niet geldig. Vraag een nieuwe aan je begeleider.');
-        setStatus('error');
-        return;
-      }
-
-      const anonCred = await signInAnonymously(auth);
-      const idToken = await getIdToken(anonCred.user);
-
+      // Alles server-side — geen Firestore op client
       const res = await fetch('/api/shopper/auth', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify({ orgId, memberId: member.memberId }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId, token }),
       });
 
-      const claimsData = await res.json();
+      const data = await res.json();
+
       if (!res.ok) {
-        setErrorMessage(claimsData.message || 'Inloggen mislukt.');
+        setErrorMessage(data.message || 'Inloggen mislukt.');
         setStatus('error');
         return;
       }
 
-      // Force token refresh zodat Firestore de nieuwe claims herkent
-      await anonCred.user.getIdToken(true);
-
-      // Sessie opslaan
-      saveShopperSession({
-        orgId,
-        memberId: member.memberId,
-        firstName: member.firstName,
-      });
-
-      // listId komt uit de API response (server-side opgehaald, geen Firestore rules nodig)
-      const listId = claimsData.listId;
-      if (listId) {
-        router.replace(`/shop/${listId}?org=${orgId}&token=${token}`);
+      if (data.listId) {
+        router.replace(`/shop/${data.listId}?org=${orgId}&token=${token}`);
       } else {
         setStatus('no-list');
       }
     } catch (err) {
-      console.error('handleToken error:', err);
-      setErrorMessage(`Fout: ${err.message}`);
+      setErrorMessage('Fout: ' + err.message);
       setStatus('error');
     }
   }
