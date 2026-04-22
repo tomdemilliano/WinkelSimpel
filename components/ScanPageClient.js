@@ -121,7 +121,9 @@ export default function ScanPageClient() {
         return;
       }
 
+      // Force token refresh en wacht zodat Firestore de nieuwe claims herkent
       await anonCred.user.getIdToken(true);
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       saveShopperSession({
         orgId,
