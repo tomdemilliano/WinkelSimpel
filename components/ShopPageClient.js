@@ -1,14 +1,12 @@
 /**
  * components/ShopPageClient.js — Winkel Simpel
- * Shopperinterface — client-side only
+ *
+ * Shopperinterface — gebruikt server-side API routes voor alle data.
+ * Geen directe Firestore toegang — omzeilt permission problemen.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { signInAnonymously, getIdToken } from 'firebase/auth';
-import { auth } from '../lib/firebase';
-import { saveShopperSession, getShopperSession } from '../lib/auth';
-import { ShoppingListFactory, ListItemFactory, MemberFactory } from '../lib/dbSchema';
 
 export default function ShopPageClient() {
   const router = useRouter();
@@ -21,6 +19,9 @@ export default function ShopPageClient() {
   const [marking, setMarking] = useState(false);
   const [shopperName, setShopperName] = useState('');
 
+  // Bewaar org, listId en token in state voor gebruik bij afvinken
+  const sessionRef = useRef({ orgId: null, listId: null, token: null });
+
   const touchStartX = useRef(null);
   const bootedRef = useRef(false);
 
@@ -30,77 +31,43 @@ export default function ShopPageClient() {
     bootedRef.current = true;
 
     const { listId, org, token } = router.query;
-    boot(listId, org, token);
+
+    if (!org || !token || !listId) {
+      setErrorMsg('Ongeldige URL. Scan opnieuw je QR-code.');
+      setPhase('error');
+      return;
+    }
+
+    sessionRef.current = { orgId: org, listId, token };
+    loadList(org, listId, token);
   }, [router.isReady]);
 
-  async function boot(listId, org, token) {
-    try {
-      const session = getShopperSession();
-
-      if (session?.orgId && session?.memberId) {
-        setShopperName(session.firstName || '');
-        await loadItems(session.orgId, listId);
-      } else if (org && token) {
-        await authenticateAndLoad(org, token, listId);
-      } else {
-        setPhase('no-session');
-      }
-    } catch (err) {
-      setErrorMsg(err.message);
-      setPhase('error');
-    }
-  }
-
-  async function authenticateAndLoad(orgId, qrToken, listId) {
+  async function loadList(orgId, listId, token) {
     setPhase('loading');
     try {
-      const snap = await MemberFactory.getByQrToken(orgId, qrToken);
-      if (snap.empty) { setErrorMsg('Ongeldige QR-code.'); setPhase('error'); return; }
-      const member = { memberId: snap.docs[0].id, ...snap.docs[0].data() };
-
-      const cred = await signInAnonymously(auth);
-      const idToken = await getIdToken(cred.user);
-
-      const res = await fetch('/api/shopper/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify({ orgId, memberId: member.memberId }),
-      });
+      const res = await fetch(
+        `/api/shopper/list?orgId=${orgId}&listId=${listId}&token=${token}`
+      );
+      const data = await res.json();
 
       if (!res.ok) {
-        const d = await res.json();
-        setErrorMsg(d.message || 'Auth mislukt');
+        setErrorMsg(data.message || 'Kon het lijstje niet laden.');
         setPhase('error');
         return;
       }
 
-      await cred.user.getIdToken(true);
-      // Wacht zodat Firestore de nieuwe claims herkent
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      saveShopperSession({ orgId, memberId: member.memberId, firstName: member.firstName });
-      setShopperName(member.firstName || '');
-      await loadItems(orgId, listId);
-    } catch (err) {
-      setErrorMsg(err.message);
-      setPhase('error');
-    }
-  }
+      setShopperName(data.member.firstName || '');
+      setItems(data.items);
 
-  async function loadItems(orgId, listId) {
-    setPhase('loading');
-    try {
-      const snap = await ListItemFactory.getAll(orgId, listId);
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setItems(all);
-      if (all.length === 0 || all.every(i => i.checked)) {
+      if (data.items.length === 0 || data.items.every(i => i.checked)) {
         setCompleted(true);
       } else {
-        const first = all.findIndex(i => !i.checked);
+        const first = data.items.findIndex(i => !i.checked);
         setCurrentIndex(first >= 0 ? first : 0);
       }
       setPhase('ready');
     } catch (err) {
-      setErrorMsg(err.code === 'permission-denied' ? 'Geen toegang. Scan opnieuw.' : err.message);
+      setErrorMsg('Fout bij laden: ' + err.message);
       setPhase('error');
     }
   }
@@ -109,32 +76,42 @@ export default function ShopPageClient() {
     if (marking) return;
     const item = items[currentIndex];
     if (!item || item.checked) return;
-    const session = getShopperSession();
-    if (!session) return;
-    const { listId } = router.query;
+
+    const { orgId, listId, token } = sessionRef.current;
 
     setMarking(true);
-    const updated = items.map((i, idx) => idx === currentIndex ? { ...i, checked: true } : i);
+    const updated = items.map((i, idx) =>
+      idx === currentIndex ? { ...i, checked: true } : i
+    );
     setItems(updated);
 
+    const allDone = updated.every(i => i.checked);
+
     try {
-      await ListItemFactory.check(session.orgId, listId, item.id);
-    } catch {
+      await fetch('/api/shopper/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId, listId, itemId: item.id, token,
+          complete: allDone,
+        }),
+      });
+    } catch (err) {
+      console.error('check error:', err);
       setItems(items);
       setMarking(false);
       return;
     }
 
-    if (updated.every(i => i.checked)) {
-      setTimeout(async () => {
-        try { await ShoppingListFactory.complete(session.orgId, listId); } catch {}
-        setCompleted(true);
-        setMarking(false);
-      }, 400);
+    if (allDone) {
+      setTimeout(() => { setCompleted(true); setMarking(false); }, 400);
     } else {
       const next = updated.findIndex((i, idx) => idx > currentIndex && !i.checked);
       const fallback = updated.findIndex(i => !i.checked);
-      setTimeout(() => { setCurrentIndex(next >= 0 ? next : fallback); setMarking(false); }, 300);
+      setTimeout(() => {
+        setCurrentIndex(next >= 0 ? next : fallback);
+        setMarking(false);
+      }, 300);
     }
   }
 
@@ -158,25 +135,15 @@ export default function ShopPageClient() {
     );
   }
 
-  if (phase === 'no-session') {
-    return (
-      <div style={styles.fullScreen}>
-        <div style={styles.messageContent}>
-          <p style={styles.messageIcon}>🔑</p>
-          <p style={styles.messageText}>Scan je QR-kaartje om verder te gaan.</p>
-          <button style={styles.actionButton} onClick={() => router.push('/scan')}>QR-code scannen</button>
-        </div>
-      </div>
-    );
-  }
-
   if (phase === 'error') {
     return (
       <div style={styles.fullScreen}>
         <div style={styles.messageContent}>
           <p style={styles.messageIcon}>😕</p>
           <p style={styles.messageText}>{errorMsg}</p>
-          <button style={styles.actionButton} onClick={() => router.push('/scan')}>Opnieuw scannen</button>
+          <button style={styles.actionButton} onClick={() => router.push('/scan')}>
+            Opnieuw scannen
+          </button>
         </div>
       </div>
     );
@@ -185,7 +152,11 @@ export default function ShopPageClient() {
   if (completed) return <CompletionScreen firstName={shopperName} />;
 
   if (items.length === 0) {
-    return <div style={styles.fullScreen}><p style={styles.loadingText}>Geen producten.</p></div>;
+    return (
+      <div style={styles.fullScreen}>
+        <p style={styles.loadingText}>Geen producten op dit lijstje.</p>
+      </div>
+    );
   }
 
   const currentItem = items[currentIndex];
@@ -218,19 +189,27 @@ export default function ShopPageClient() {
       </div>
       <div style={styles.productInfo}>
         <p style={styles.productName}>{currentItem.productName}</p>
-        <p style={styles.productQuantity}>{currentItem.quantity} {currentItem.quantity === 1 ? 'stuk' : 'stuks'}</p>
+        <p style={styles.productQuantity}>
+          {currentItem.quantity} {currentItem.quantity === 1 ? 'stuk' : 'stuks'}
+        </p>
       </div>
       <div style={styles.navRow}>
         <button style={{ ...styles.navButton, opacity: currentIndex === 0 ? 0.2 : 1 }} onClick={goPrev} disabled={currentIndex === 0}>←</button>
         <div style={styles.dots}>
           {items.map((item, idx) => (
-            <div key={item.id} style={{ ...styles.dot, backgroundColor: item.checked ? '#4CAF50' : idx === currentIndex ? '#1a1a1a' : '#ddd', transform: idx === currentIndex ? 'scale(1.3)' : 'scale(1)' }} />
+            <div key={item.id} style={{
+              ...styles.dot,
+              backgroundColor: item.checked ? '#4CAF50' : idx === currentIndex ? '#1a1a1a' : '#ddd',
+              transform: idx === currentIndex ? 'scale(1.3)' : 'scale(1)',
+            }} />
           ))}
         </div>
         <button style={{ ...styles.navButton, opacity: currentIndex === items.length - 1 ? 0.2 : 1 }} onClick={goNext} disabled={currentIndex === items.length - 1}>→</button>
       </div>
       {!currentItem.checked ? (
-        <button style={{ ...styles.takenButton, opacity: marking ? 0.7 : 1 }} onClick={handleTaken} disabled={marking}>✓ Genomen!</button>
+        <button style={{ ...styles.takenButton, opacity: marking ? 0.7 : 1 }} onClick={handleTaken} disabled={marking}>
+          ✓ Genomen!
+        </button>
       ) : (
         <div style={styles.alreadyTakenBadge}>✓ Al genomen</div>
       )}
