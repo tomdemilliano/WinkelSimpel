@@ -6,10 +6,27 @@
  * reordering items, and activating or deactivating the list.
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../../lib/auth';
 import { buildQrUrl } from '../../../lib/qr';
+
+// ---------------------------------------------------------------------------
+// ProductImage — toont afbeelding of standaard winkeltas icon
+// ---------------------------------------------------------------------------
+function ProductImage({ url, alt, style }) {
+  const [failed, setFailed] = React.useState(false);
+  if (!url || failed) {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5' }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+    );
+  }
+  return <img src={url} alt={alt || ''} style={style} onError={() => setFailed(true)} referrerPolicy="no-referrer" />;
+}
 import {
   ShoppingListFactory,
   ListItemFactory,
@@ -317,11 +334,7 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
     <div style={styles.itemRow}>
       {/* Image */}
       <div style={styles.itemImageWrapper}>
-        {item.productImageUrl ? (
-          <img src={item.productImageUrl} alt={item.productName} style={styles.itemImage} />
-        ) : (
-          <div style={styles.itemImagePlaceholder}>🛍️</div>
-        )}
+        <ProductImage url={item.productImageUrl} alt={item.productName} style={styles.itemImage} />
       </div>
 
       {/* Name */}
