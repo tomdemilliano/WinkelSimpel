@@ -103,6 +103,19 @@ function QrCardPage({ claims }) {
             <QrCodeImage url={qrUrl} size={220} />
           </div>
 
+          {/* Clickable URL for laptop testing */}
+          <div style={styles.urlBox} className="no-print">
+            <p style={styles.urlLabel}>Of open deze link op een toestel:</p>
+            <a
+              href={qrUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={styles.urlLink}
+            >
+              {qrUrl}
+            </a>
+          </div>
+
           {/* Instruction for shopper — simple words, large text */}
           <div style={styles.shopperInstruction}>
             <p style={styles.instructionStep}>📷 Scan de code</p>
@@ -259,6 +272,28 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     height: '100vh',
+  },
+  urlBox: {
+    width: '100%',
+    borderTop: '1px solid #eee',
+    paddingTop: '0.875rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  },
+  urlLabel: {
+    fontSize: '0.75rem',
+    color: '#aaa',
+    margin: 0,
+    textAlign: 'center',
+  },
+  urlLink: {
+    fontSize: '0.7rem',
+    color: '#1565C0',
+    wordBreak: 'break-all',
+    textAlign: 'center',
+    textDecoration: 'underline',
+    lineHeight: 1.5,
   },
   hint: {
     color: '#aaa',
