@@ -3,14 +3,12 @@
  *
  * QR scan entry point for shoppers.
  *
- * Flow:
- *   1. Scan QR code → extract orgId + token from URL
- *   2. Validate token against Firestore
- *   3. Sign in anonymously via Firebase Auth
- *   4. Call /api/shopper/auth to set custom claims (orgId, memberId)
- *   5. Force token refresh so new claims are active
- *   6. Save session to localStorage
- *   7. Redirect to active shopping list
+ * Primary flow (recommended):
+ *   Shopper scans QR code with phone camera app → browser opens
+ *   https://app.url/scan?org={orgId}&token={qrToken} directly
+ *
+ * Secondary flow (fallback):
+ *   Shopper opens /scan manually → camera opens in browser to scan QR code
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -25,37 +23,48 @@ export default function ScanPage() {
   const router = useRouter();
   const { ready } = router;
 
-  const [status, setStatus] = useState('loading');
+  // 'idle' | 'validating' | 'scanning' | 'error' | 'no-list'
+  const [status, setStatus] = useState('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const scannerRef = useRef(null);
   const scannerInstanceRef = useRef(null);
+  const handledRef = useRef(false);
 
-  // Mode 1: URL parameters present — validate directly
   useEffect(() => {
     if (!ready) return;
+    if (handledRef.current) return;
+
     const parsed = parseQrQuery(router.query);
     if (parsed) {
+      // URL parameters present — came from scanning QR with camera app
+      handledRef.current = true;
       handleToken(parsed.orgId, parsed.token);
     } else {
+      // No parameters — show camera scanner as fallback
       setStatus('scanning');
     }
   }, [ready, router.query]);
 
-  // Mode 2: Start camera scanner
+  // Start camera scanner
   useEffect(() => {
     if (status !== 'scanning') return;
 
-    async function startScanner() {
-      const { Html5Qrcode } = await import('html5-qrcode');
-      const scanner = new Html5Qrcode('qr-reader');
-      scannerInstanceRef.current = scanner;
+    let isMounted = true;
 
+    async function startScanner() {
       try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        if (!isMounted) return;
+
+        const scanner = new Html5Qrcode('qr-reader');
+        scannerInstanceRef.current = scanner;
+
         await scanner.start(
           { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 260, height: 260 } },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
           async (decodedText) => {
-            await scanner.stop();
+            if (handledRef.current) return;
+            handledRef.current = true;
+            await scanner.stop().catch(() => {});
             try {
               const url = new URL(decodedText);
               const orgId = url.searchParams.get('org');
@@ -71,17 +80,21 @@ export default function ScanPage() {
               setStatus('error');
             }
           },
-          () => {}
+          () => {} // ignore per-frame errors
         );
-      } catch {
-        setErrorMessage('Camera kon niet worden gestart. Controleer de toestemming.');
-        setStatus('error');
+      } catch (err) {
+        console.error('Camera start error:', err);
+        if (isMounted) {
+          setErrorMessage('Camera kon niet worden gestart. Controleer de toestemming in je browser.');
+          setStatus('error');
+        }
       }
     }
 
     startScanner();
 
     return () => {
+      isMounted = false;
       if (scannerInstanceRef.current) {
         scannerInstanceRef.current.stop().catch(() => {});
       }
@@ -103,7 +116,7 @@ export default function ScanPage() {
       const anonCredential = await signInAnonymously(auth);
       const anonUser = anonCredential.user;
 
-      // Step 3: get ID token and call server to set custom claims
+      // Step 3: call server to set custom claims (role, orgId, memberId)
       const idToken = await getIdToken(anonUser);
       const claimsRes = await fetch('/api/shopper/auth', {
         method: 'POST',
@@ -111,10 +124,7 @@ export default function ScanPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
         },
-        body: JSON.stringify({
-          orgId,
-          memberId: member.memberId,
-        }),
+        body: JSON.stringify({ orgId, memberId: member.memberId }),
       });
 
       if (!claimsRes.ok) {
@@ -124,17 +134,17 @@ export default function ScanPage() {
         return;
       }
 
-      // Step 4: force token refresh so new claims are active in Firestore rules
+      // Step 4: force token refresh so Firestore rules see the new claims
       await anonUser.getIdToken(true);
 
-      // Step 5: save session to localStorage
+      // Step 5: save session to localStorage for the shopper interface
       saveShopperSession({
         orgId,
         memberId: member.memberId,
         firstName: member.firstName,
       });
 
-      // Step 6: find active shopping list and redirect
+      // Step 6: find active list and redirect
       const listSnap = await ShoppingListFactory.getActiveForMember(orgId, member.memberId);
       if (!listSnap.empty) {
         router.replace(`/shop/${listSnap.docs[0].id}`);
@@ -148,44 +158,61 @@ export default function ScanPage() {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
   return (
     <div style={styles.page}>
-      {status === 'loading' && (
+
+      {/* Idle — waiting for router to be ready */}
+      {status === 'idle' && (
         <div style={styles.centered}>
           <div style={styles.spinner} />
         </div>
       )}
 
+      {/* Validating — processing QR token */}
+      {status === 'validating' && (
+        <div style={styles.centered}>
+          <div style={styles.spinner} />
+          <p style={styles.statusText}>Even controleren...</p>
+        </div>
+      )}
+
+      {/* Camera scanner */}
       {status === 'scanning' && (
         <div style={styles.scannerWrapper}>
-          <p style={styles.scanInstruction}>Richt de camera op je kaartje</p>
-          <div id="qr-reader" ref={scannerRef} style={styles.scannerBox} />
+          <p style={styles.scanInstruction}>
+            Richt de camera op je kaartje
+          </p>
+          <div id="qr-reader" style={styles.scannerBox} />
           <p style={styles.scanHint}>📷</p>
         </div>
       )}
 
-      {status === 'validating' && (
-        <div style={styles.centered}>
-          <div style={styles.spinner} />
-          <p style={styles.validatingText}>Even controleren...</p>
-        </div>
-      )}
-
+      {/* Error */}
       {status === 'error' && (
         <div style={styles.centered}>
           <div style={styles.iconLarge}>❌</div>
           <p style={styles.errorText}>{errorMessage}</p>
-          <button style={styles.retryButton} onClick={() => setStatus('scanning')}>
+          <button
+            style={styles.retryButton}
+            onClick={() => {
+              handledRef.current = false;
+              setStatus('scanning');
+            }}
+          >
             Opnieuw proberen
           </button>
         </div>
       )}
 
+      {/* No active list */}
       {status === 'no-list' && (
         <div style={styles.centered}>
           <div style={styles.iconLarge}>🛒</div>
           <p style={styles.noListText}>
-            Er is nog geen lijstje klaar. Vraag het aan je begeleider!
+            Er is nog geen lijstje klaar.{'\n'}Vraag het aan je begeleider!
           </p>
         </div>
       )}
@@ -193,6 +220,9 @@ export default function ScanPage() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 const styles = {
   page: {
     minHeight: '100vh',
@@ -218,7 +248,7 @@ const styles = {
     alignItems: 'center',
     gap: '1.5rem',
     width: '100%',
-    maxWidth: '360px',
+    maxWidth: '400px',
   },
   scannerBox: {
     width: '100%',
@@ -234,6 +264,7 @@ const styles = {
   },
   scanHint: {
     fontSize: '3rem',
+    margin: 0,
   },
   spinner: {
     width: '56px',
@@ -243,7 +274,7 @@ const styles = {
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
-  validatingText: {
+  statusText: {
     fontSize: '1.25rem',
     color: '#555',
     margin: 0,
@@ -252,10 +283,10 @@ const styles = {
     fontSize: '5rem',
   },
   errorText: {
-    fontSize: '1.25rem',
+    fontSize: '1.1rem',
     color: '#c62828',
     maxWidth: '300px',
-    lineHeight: '1.5',
+    lineHeight: '1.6',
     margin: 0,
   },
   noListText: {
@@ -265,6 +296,7 @@ const styles = {
     lineHeight: '1.6',
     textAlign: 'center',
     margin: 0,
+    whiteSpace: 'pre-line',
   },
   retryButton: {
     padding: '1rem 2rem',
