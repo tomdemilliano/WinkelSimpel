@@ -3,38 +3,34 @@
  *
  * QR scan entry point for shoppers.
  *
- * Two modes:
- *   1. URL parameters present (?org=...&token=...):
- *      Validate the token against Firestore, save the session, redirect to active list.
- *   2. No parameters:
- *      Show the camera-based QR scanner so the shopper can scan their card.
- *
- * This page is intentionally very visual and simple — shoppers cannot read.
+ * Flow:
+ *   1. Scan QR code → extract orgId + token from URL
+ *   2. Validate token against Firestore
+ *   3. Sign in anonymously via Firebase Auth
+ *   4. Call /api/shopper/auth to set custom claims (orgId, memberId)
+ *   5. Force token refresh so new claims are active
+ *   6. Save session to localStorage
+ *   7. Redirect to active shopping list
  */
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { signInAnonymously, getIdToken } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { validateQrToken, saveShopperSession } from '../lib/auth';
 import { parseQrQuery } from '../lib/qr';
 import { ShoppingListFactory } from '../lib/dbSchema';
-
-// ---------------------------------------------------------------------------
-// QR scanner library — loaded dynamically (client-side only)
-// We use 'html5-qrcode' (install: npm install html5-qrcode)
-// ---------------------------------------------------------------------------
 
 export default function ScanPage() {
   const router = useRouter();
   const { ready } = router;
 
-  const [status, setStatus] = useState('loading'); // loading | scanning | validating | error
+  const [status, setStatus] = useState('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const scannerRef = useRef(null);
   const scannerInstanceRef = useRef(null);
 
-  // -------------------------------------------------------------------------
   // Mode 1: URL parameters present — validate directly
-  // -------------------------------------------------------------------------
   useEffect(() => {
     if (!ready) return;
     const parsed = parseQrQuery(router.query);
@@ -45,17 +41,13 @@ export default function ScanPage() {
     }
   }, [ready, router.query]);
 
-  // -------------------------------------------------------------------------
   // Mode 2: Start camera scanner
-  // -------------------------------------------------------------------------
   useEffect(() => {
     if (status !== 'scanning') return;
 
-    let scanner;
-
     async function startScanner() {
       const { Html5Qrcode } = await import('html5-qrcode');
-      scanner = new Html5Qrcode('qr-reader');
+      const scanner = new Html5Qrcode('qr-reader');
       scannerInstanceRef.current = scanner;
 
       try {
@@ -64,17 +56,22 @@ export default function ScanPage() {
           { fps: 10, qrbox: { width: 260, height: 260 } },
           async (decodedText) => {
             await scanner.stop();
-            const url = new URL(decodedText);
-            const orgId = url.searchParams.get('org');
-            const token = url.searchParams.get('token');
-            if (!orgId || !token) {
+            try {
+              const url = new URL(decodedText);
+              const orgId = url.searchParams.get('org');
+              const token = url.searchParams.get('token');
+              if (!orgId || !token) {
+                setErrorMessage('Ongeldige QR-code. Vraag een nieuwe aan je begeleider.');
+                setStatus('error');
+                return;
+              }
+              handleToken(orgId, token);
+            } catch {
               setErrorMessage('Ongeldige QR-code. Vraag een nieuwe aan je begeleider.');
               setStatus('error');
-              return;
             }
-            handleToken(orgId, token);
           },
-          () => {} // ignore scan errors (camera frames without QR)
+          () => {}
         );
       } catch {
         setErrorMessage('Camera kon niet worden gestart. Controleer de toestemming.');
@@ -91,12 +88,10 @@ export default function ScanPage() {
     };
   }, [status]);
 
-  // -------------------------------------------------------------------------
-  // Validate token + find active list
-  // -------------------------------------------------------------------------
   async function handleToken(orgId, token) {
     setStatus('validating');
     try {
+      // Step 1: validate QR token against Firestore
       const member = await validateQrToken(orgId, token);
       if (!member) {
         setErrorMessage('Deze QR-code is niet geldig. Vraag een nieuwe aan je begeleider.');
@@ -104,53 +99,71 @@ export default function ScanPage() {
         return;
       }
 
-      // Save session to localStorage
+      // Step 2: sign in anonymously via Firebase Auth
+      const anonCredential = await signInAnonymously(auth);
+      const anonUser = anonCredential.user;
+
+      // Step 3: get ID token and call server to set custom claims
+      const idToken = await getIdToken(anonUser);
+      const claimsRes = await fetch('/api/shopper/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          orgId,
+          memberId: member.memberId,
+        }),
+      });
+
+      if (!claimsRes.ok) {
+        const data = await claimsRes.json();
+        setErrorMessage(data.message || 'Inloggen mislukt. Probeer opnieuw.');
+        setStatus('error');
+        return;
+      }
+
+      // Step 4: force token refresh so new claims are active in Firestore rules
+      await anonUser.getIdToken(true);
+
+      // Step 5: save session to localStorage
       saveShopperSession({
         orgId,
         memberId: member.memberId,
         firstName: member.firstName,
       });
 
-      // Find the active shopping list for this member
+      // Step 6: find active shopping list and redirect
       const listSnap = await ShoppingListFactory.getActiveForMember(orgId, member.memberId);
-
       if (!listSnap.empty) {
-        const listId = listSnap.docs[0].id;
-        router.replace(`/shop/${listId}`);
+        router.replace(`/shop/${listSnap.docs[0].id}`);
       } else {
-        // No active list — show friendly message
         setStatus('no-list');
       }
-    } catch {
+    } catch (err) {
+      console.error('handleToken error:', err);
       setErrorMessage('Er is iets misgegaan. Probeer opnieuw.');
       setStatus('error');
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
   return (
     <div style={styles.page}>
-      {/* Loading */}
       {status === 'loading' && (
         <div style={styles.centered}>
           <div style={styles.spinner} />
         </div>
       )}
 
-      {/* Camera scanner */}
       {status === 'scanning' && (
         <div style={styles.scannerWrapper}>
-          <p style={styles.scanInstruction}>
-            Richt de camera op je kaartje
-          </p>
+          <p style={styles.scanInstruction}>Richt de camera op je kaartje</p>
           <div id="qr-reader" ref={scannerRef} style={styles.scannerBox} />
           <p style={styles.scanHint}>📷</p>
         </div>
       )}
 
-      {/* Validating */}
       {status === 'validating' && (
         <div style={styles.centered}>
           <div style={styles.spinner} />
@@ -158,7 +171,6 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* Error */}
       {status === 'error' && (
         <div style={styles.centered}>
           <div style={styles.iconLarge}>❌</div>
@@ -169,7 +181,6 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* No active list */}
       {status === 'no-list' && (
         <div style={styles.centered}>
           <div style={styles.iconLarge}>🛒</div>
@@ -182,9 +193,6 @@ export default function ScanPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles — large, clear, accessible for shoppers
-// ---------------------------------------------------------------------------
 const styles = {
   page: {
     minHeight: '100vh',
