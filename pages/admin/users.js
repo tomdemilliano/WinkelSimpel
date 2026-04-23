@@ -10,7 +10,7 @@
  * See pages/api/admin/create-guide.js
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
 import { MemberFactory } from '../../lib/dbSchema';
@@ -31,9 +31,9 @@ function UsersPage({ claims }) {
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!router.isReady || !orgId) return;
     loadMembers();
-  }, [orgId]);
+  }, [router.isReady, orgId]);
 
   async function loadMembers() {
     setLoading(true);
@@ -79,7 +79,7 @@ function UsersPage({ claims }) {
           ← Terug
         </button>
         <div style={styles.headerCenter}>
-          <h1 style={styles.title}>{orgName || 'Organisatie'}</h1>
+          <EditableOrgName orgId={orgId} initialName={orgName || ''} />
           <p style={styles.subtitle}>{members.length} gebruikers</p>
         </div>
         <button style={styles.addButton} onClick={() => setShowForm(true)}>
@@ -332,6 +332,65 @@ function NewGuideForm({ orgId, onSave, onClose }) {
         </form>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EditableOrgName — inline bewerken van organisatienaam
+// ---------------------------------------------------------------------------
+function EditableOrgName({ orgId, initialName }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(initialName);
+  const [saving, setSaving] = useState(false);
+  const inputRef = React.useRef();
+
+  // Sync als initialName later binnenkomt via router.query
+  React.useEffect(() => { if (initialName) setName(initialName); }, [initialName]);
+
+  async function handleSave() {
+    if (!name.trim() || name.trim() === initialName) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      const { OrganizationFactory } = await import('../../lib/dbSchema');
+      await OrganizationFactory.update(orgId, { name: name.trim() });
+    } catch (err) {
+      console.error('Failed to update org name:', err);
+      setName(initialName);
+    } finally {
+      setSaving(false);
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <input
+          ref={inputRef}
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
+          autoFocus
+          style={{ fontSize: '1rem', fontWeight: '700', border: '1.5px solid #4CAF50', borderRadius: '6px', padding: '0.25rem 0.5rem', color: '#1a1a1a', outline: 'none', maxWidth: '180px' }}
+        />
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '0.25rem 0.6rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer' }}>
+          {saving ? '...' : '✓'}
+        </button>
+        <button onClick={() => setEditing(false)}
+          style={{ padding: '0.25rem 0.5rem', backgroundColor: '#f0f0f0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer', color: '#666' }}>
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={() => setEditing(true)}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+      <h1 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#1a1a1a', margin: 0 }}>{name || 'Organisatie'}</h1>
+      <span style={{ fontSize: '0.75rem', color: '#bbb' }}>✏️</span>
+    </button>
   );
 }
 
