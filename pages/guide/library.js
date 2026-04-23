@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { ProductFactory, StorageFactory } from '../../lib/dbSchema';
+import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // ProductImage — toont afbeelding of standaard winkeltas icon
@@ -52,6 +52,7 @@ function ProductLibrary({ claims }) {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null); // null = new product
   const [searchQuery, setSearchQuery] = useState('');
+  const [centralProducts, setCentralProducts] = useState([]);
 
   // Load products on mount
   useEffect(() => {
@@ -61,8 +62,12 @@ function ProductLibrary({ claims }) {
   async function loadProducts() {
     setLoading(true);
     try {
-      const snap = await ProductFactory.getAll(orgId);
-      setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const [orgSnap, centralSnap] = await Promise.all([
+        ProductFactory.getAll(orgId),
+        CentralProductFactory.getAll(),
+      ]);
+      setProducts(orgSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'org' })));
+      setCentralProducts(centralSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'central' })));
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -105,8 +110,19 @@ function ProductLibrary({ claims }) {
     await loadProducts();
   }
 
-  // Filter products by search query
-  const filteredProducts = products.filter((p) =>
+  // Combineer centrale + org producten, vermijd duplicaten op naam
+  const orgProductNames = new Set(products.map(p => p.name.toLowerCase().trim()));
+  const centralOnly = centralProducts.filter(
+    p => !orgProductNames.has(p.name.toLowerCase().trim())
+  );
+  const allProducts = [
+    ...centralProducts.filter(p => orgProductNames.has(p.name.toLowerCase().trim()))
+      .map(c => ({ ...products.find(p => p.name.toLowerCase().trim() === c.name.toLowerCase().trim()), _central: c })),
+    ...centralOnly,
+    ...products.filter(p => !centralProducts.some(c => c.name.toLowerCase().trim() === p.name.toLowerCase().trim())),
+  ];
+
+  const filteredProducts = allProducts.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -174,18 +190,26 @@ function ProductLibrary({ claims }) {
 // ProductCard
 // ---------------------------------------------------------------------------
 function ProductCard({ product, onEdit, onDelete }) {
+  const isCentral = product._source === 'central';
+  const hasOrgVersion = !!product._central;
   return (
     <div style={styles.card}>
       <div style={styles.cardImageWrapper}>
         <ProductImage url={product.imageUrl} alt={product.name} style={styles.cardImage} />
       </div>
       <div style={styles.cardBody}>
-        <p style={styles.cardName}>{product.name}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <p style={styles.cardName}>{product.name}</p>
+          {isCentral && !hasOrgVersion && (
+            <span style={styles.centralBadge}>Centraal</span>
+          )}
+        </div>
         <p style={styles.cardUnit}>{product.unit}</p>
       </div>
       <div style={styles.cardActions}>
-        <button style={styles.editButton} onClick={onEdit}>Bewerken</button>
-        <button style={styles.deleteButton} onClick={onDelete}>Verwijderen</button>
+        {!isCentral && <button style={styles.editButton} onClick={onEdit}>Bewerken</button>}
+        {!isCentral && <button style={styles.deleteButton} onClick={onDelete}>Verwijderen</button>}
+        {isCentral && !hasOrgVersion && <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alleen-lezen</span>}
       </div>
     </div>
   );
@@ -208,6 +232,7 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
   const [error, setError] = useState('');
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
+  const [centralMatch, setCentralMatch] = useState(null); // central product met zelfde naam
   const fileInputRef = useRef();
 
   async function handleImport(isBarcode = false) {
@@ -237,6 +262,26 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
     } finally {
       setImporting(false);
     }
+  }
+
+  // Dien product in bij admin voor centrale library (transparant voor gebruiker)
+  async function submitToCentral(orgProductId, name, imageUrl, unit) {
+    // Niet indienen als het al in de centrale library staat
+    if (centralMatch) return;
+    try {
+      await ProductSubmissionFactory.create({ name, imageUrl, unit, orgId, orgProductId });
+    } catch (err) {
+      console.warn('Submission to central failed (non-blocking):', err.message);
+    }
+  }
+
+  // Check of naam al in centrale library bestaat
+  async function checkCentralName(value) {
+    if (!value.trim() || value.trim().length < 3) { setCentralMatch(null); return; }
+    try {
+      const snap = await CentralProductFactory.getByName(value.trim());
+      setCentralMatch(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
+    } catch { setCentralMatch(null); }
   }
 
   function handleImageChange(e) {
@@ -292,24 +337,25 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
           });
           const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
           await ProductFactory.update(orgId, docRef.id, { imageUrl });
+          await submitToCentral(docRef.id, name.trim(), imageUrl, unit);
           onSave({ id: docRef.id, name: name.trim(), unit, imageUrl });
         } else if (importedImageUrl?.trim()) {
-          // Gebruik geïmporteerde of handmatig ingevoerde URL
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: importedImageUrl.trim(),
             unit,
             createdBy: claims.uid,
           });
+          await submitToCentral(docRef.id, name.trim(), importedImageUrl.trim(), unit);
           onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim() });
         } else {
-          // No image — save with empty imageUrl
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: '',
             unit,
             createdBy: claims.uid,
           });
+          await submitToCentral(docRef.id, name.trim(), '', unit);
           onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '' });
         }
       }
@@ -412,11 +458,16 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => { setName(e.target.value); checkCentralName(e.target.value); }}
               style={styles.input}
               placeholder="bijv. Melk"
               required
             />
+            {centralMatch && (
+              <div style={styles.centralWarning}>
+                <strong>"{centralMatch.name}"</strong> staat al in de centrale bibliotheek en is beschikbaar voor jouw organisatie. Je kan dit product toch apart opslaan als je een eigen versie wil bijhouden.
+              </div>
+            )}
           </div>
 
           {/* Unit */}
@@ -569,6 +620,24 @@ const styles = {
     fontSize: '0.8rem',
     fontWeight: '600',
     cursor: 'pointer',
+  },
+  centralWarning: {
+    fontSize: '0.8rem',
+    color: '#1565C0',
+    backgroundColor: '#E3F2FD',
+    padding: '0.6rem 0.8rem',
+    borderRadius: '8px',
+    lineHeight: 1.4,
+    marginTop: '0.25rem',
+  },
+  centralBadge: {
+    fontSize: '0.7rem',
+    fontWeight: '700',
+    color: '#1565C0',
+    backgroundColor: '#E3F2FD',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '20px',
+    whiteSpace: 'nowrap',
   },
   deleteButton: {
     padding: '0.35rem 0.75rem',
