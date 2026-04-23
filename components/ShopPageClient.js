@@ -160,7 +160,7 @@ export default function ShopPageClient() {
           </button>
         </div>
         {/* Progress bar */}
-        <div style={{ ...styles.progressBarWrapper, position: 'relative', flexShrink: 0 }}>
+        <div style={{ ...styles.progressBarWrapper, flexShrink: 0, margin: '0 0.75rem' }}>
           <div style={{ ...styles.progressBarFill, width: `${progressPct}%` }} />
         </div>
         {/* Grid */}
@@ -203,17 +203,19 @@ export default function ShopPageClient() {
   // ---- DETAILVIEW ----
   return (
     <div style={styles.fullScreen} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      {/* Progress bar */}
-      <div style={styles.progressBarWrapper}>
-        <div style={{ ...styles.progressBarFill, width: `${progressPct}%` }} />
-      </div>
-
-      {/* Header: teller + view toggle */}
-      <div style={styles.detailHeader}>
-        <span style={styles.counterText}>{checkedCount + 1} / {items.length}</span>
-        <button style={styles.viewToggleBtn} onClick={() => setView('overview')}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        </button>
+      {/* Progress bar + teller */}
+      <div style={styles.progressSection}>
+        <div style={styles.progressBarWrapper}>
+          <div style={{ ...styles.progressBarFill, width: `${progressPct}%` }} />
+        </div>
+        <div style={styles.progressLabelRow}>
+          <span style={styles.progressLabel}>
+            {uncheckedItems.length === 0 ? 'Alles genomen! 🎉' : `Nog ${uncheckedItems.length} product${uncheckedItems.length === 1 ? '' : 'en'}`}
+          </span>
+          <button style={styles.viewToggleBtn} onClick={() => setView('overview')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </button>
+        </div>
       </div>
 
       {/* Product afbeelding */}
@@ -238,9 +240,10 @@ export default function ShopPageClient() {
       {/* Product info */}
       <div style={styles.productInfo}>
         <p style={styles.productName}>{currentItem.productName}</p>
-        <p style={styles.productQuantity}>
-          {currentItem.quantity} {currentItem.quantity === 1 ? 'stuk' : 'stuks'}
-        </p>
+        <div style={styles.quantityBadge}>
+          <span style={styles.quantityNumber}>{currentItem.quantity}</span>
+          <span style={styles.quantityUnit}>{currentItem.quantity === 1 ? 'stuk' : 'stuks'}</span>
+        </div>
       </div>
 
       {/* Navigatie pijlen */}
@@ -358,7 +361,7 @@ function CompletionScreen({ firstName }) {
 
 // ---- Styles ----
 const styles = {
-  fullScreen: { position: 'fixed', inset: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', fontFamily: 'system-ui, sans-serif', userSelect: 'none' },
+  fullScreen: { position: 'fixed', inset: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden', fontFamily: 'system-ui, sans-serif', userSelect: 'none', padding: '0.5rem 0 0' },
   spinner: { width: '60px', height: '60px', border: '6px solid #eee', borderTop: '6px solid #4CAF50', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: '1rem' },
   loadingText: { fontSize: '1.1rem', color: '#aaa', margin: 0 },
   messageContent: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', padding: '2rem', textAlign: 'center' },
@@ -367,16 +370,15 @@ const styles = {
   actionButton: { padding: '1rem 2rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer' },
 
   // Progress
-  progressBarWrapper: { position: 'absolute', top: 0, left: 0, right: 0, height: '6px', backgroundColor: '#eee' },
-  progressBarFill: { height: '100%', backgroundColor: '#4CAF50', transition: 'width 0.4s ease' },
-
-  // Detail header
-  detailHeader: { position: 'absolute', top: '10px', left: 0, right: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 1rem' },
-  counterText: { fontSize: '1rem', fontWeight: '700', color: '#aaa' },
+  progressSection: { flexShrink: 0, width: '100%', paddingTop: '0.5rem' },
+  progressBarWrapper: { width: '100%', height: '12px', backgroundColor: '#eee', borderRadius: '6px', overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: '#4CAF50', transition: 'width 0.4s ease', borderRadius: '6px' },
+  progressLabelRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0.25rem 0' },
+  progressLabel: { fontSize: '0.9rem', fontWeight: '700', color: '#4CAF50' },
   viewToggleBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', padding: '0.25rem', display: 'flex', alignItems: 'center' },
 
   // Image
-  imageContainer: { flex: 1, position: 'relative', width: 'calc(100% - 1.5rem)', overflow: 'hidden', margin: '2.5rem 0.75rem 0.5rem', borderRadius: '20px', backgroundColor: '#f9f9f9', minHeight: 0, transition: 'background-color 0.3s' },
+  imageContainer: { flex: 1, position: 'relative', width: 'calc(100% - 1.5rem)', overflow: 'hidden', margin: '0 0.75rem 0.5rem', borderRadius: '20px', backgroundColor: '#f9f9f9', minHeight: 0, transition: 'background-color 0.3s' },
   imageContainerDone: { backgroundColor: '#E8F5E9' },
   productImage: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' },
   imagePlaceholder: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '1.5rem' },
@@ -385,8 +387,10 @@ const styles = {
 
   // Product info
   productInfo: { padding: '0.4rem 1.25rem 0', textAlign: 'center', flexShrink: 0, width: '100%' },
-  productName: { fontSize: '1.75rem', fontWeight: '800', color: '#1a1a1a', margin: '0 0 0.15rem', lineHeight: 1.15 },
-  productQuantity: { fontSize: '1.2rem', fontWeight: '700', color: '#4CAF50', margin: 0 },
+  productName: { fontSize: '1.3rem', fontWeight: '700', color: '#555', margin: '0 0 0.4rem', lineHeight: 1.2 },
+  quantityBadge: { display: 'inline-flex', alignItems: 'baseline', gap: '0.3rem', backgroundColor: '#E8F5E9', border: '2px solid #4CAF50', borderRadius: '14px', padding: '0.4rem 1.1rem', justifyContent: 'center' },
+  quantityNumber: { fontSize: '2.5rem', fontWeight: '900', color: '#2E7D32', lineHeight: 1 },
+  quantityUnit: { fontSize: '1rem', fontWeight: '600', color: '#4CAF50' },
 
   // Nav
   navRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 1rem', flexShrink: 0, width: '100%' },
