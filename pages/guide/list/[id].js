@@ -9,7 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../../lib/auth';
-import { buildQrUrl } from '../../../lib/qr';
+import { buildQrUrl, buildDirectShopUrl } from '../../../lib/qr';
 
 // ---------------------------------------------------------------------------
 // ProductImage — toont afbeelding of standaard winkeltas icon
@@ -49,6 +49,7 @@ function ListDetail({ claims }) {
   const [loading, setLoading] = useState(true);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [assignedMemberToken, setAssignedMemberToken] = useState(null);
 
   useEffect(() => {
     if (!listId) return;
@@ -75,6 +76,10 @@ function ListDetail({ claims }) {
       // Resolve assigned label
       if (listData.assignedTo?.type === 'member') {
         const memberSnap = await MemberFactory.getById(orgId, listData.assignedTo.id);
+        // qrToken bewaren voor directe shop link
+        if (memberSnap?.qrToken) {
+          setAssignedMemberToken(memberSnap.qrToken);
+        }
         if (memberSnap.exists()) {
           const m = memberSnap.data();
           setAssignedLabel(`${m.firstName} ${m.lastName}`);
@@ -301,6 +306,14 @@ function ListDetail({ claims }) {
               onClick={() => router.push(`/guide/qr/${list.assignedTo.id}`)}
             >
               📱 QR-kaartje tonen
+            </button>
+          )}
+          {assignedMemberToken && (
+            <button
+              style={styles.shopperViewButton}
+              onClick={() => window.open(buildDirectShopUrl(orgId, assignedMemberToken, list.id), '_blank')}
+            >
+              👁 Shopper-view openen
             </button>
           )}
           <button
@@ -734,6 +747,16 @@ const styles = {
     borderRadius: '10px',
     fontSize: '1rem',
     fontWeight: '700',
+    cursor: 'pointer',
+  },
+  shopperViewButton: {
+    padding: '0.75rem',
+    backgroundColor: '#F3E5F5',
+    color: '#6A1B9A',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.95rem',
+    fontWeight: '600',
     cursor: 'pointer',
   },
   qrButton: {
