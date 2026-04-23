@@ -18,6 +18,7 @@ export default function Document() {
         <meta name="theme-color" content="#4CAF50" />
 
         {/* iOS Safari PWA ondersteuning */}
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Winkel Simpel" />
