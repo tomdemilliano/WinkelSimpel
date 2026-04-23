@@ -20,11 +20,15 @@ export default function InstallPrompt() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    // Alleen tonen op touch-toestellen (smartphone/tablet), niet op laptop/desktop
+    const isTouchDevice =
+      navigator.maxTouchPoints > 1 ||
+      window.matchMedia('(pointer: coarse)').matches;
+    if (!isTouchDevice) return;
+
     // Eerder weggedrukt? Dan niet meer tonen.
-    if (typeof window !== 'undefined') {
-      const wasDismissed = localStorage.getItem('pwa-install-dismissed');
-      if (wasDismissed) { setDismissed(true); return; }
-    }
+    const wasDismissed = localStorage.getItem('pwa-install-dismissed');
+    if (wasDismissed) { setDismissed(true); return; }
 
     function handleBeforeInstallPrompt(e) {
       e.preventDefault(); // voorkom automatische browser-banner
