@@ -76,13 +76,13 @@ function ListDetail({ claims }) {
       // Resolve assigned label
       if (listData.assignedTo?.type === 'member') {
         const memberSnap = await MemberFactory.getById(orgId, listData.assignedTo.id);
-        // qrToken bewaren voor directe shop link
-        if (memberSnap?.qrToken) {
-          setAssignedMemberToken(memberSnap.qrToken);
-        }
         if (memberSnap.exists()) {
           const m = memberSnap.data();
           setAssignedLabel(`${m.firstName} ${m.lastName}`);
+          // qrToken bewaren voor directe shop link
+          if (m.qrToken) {
+            setAssignedMemberToken(m.qrToken);
+          }
         }
       } else if (listData.assignedTo?.type === 'group') {
         const groupSnap = await GroupFactory.getById(orgId, listData.assignedTo.id);
