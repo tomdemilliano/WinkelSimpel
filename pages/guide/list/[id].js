@@ -242,7 +242,13 @@ function ListDetail({ claims }) {
           ← Terug
         </button>
         <div style={styles.headerCenter}>
-          <h1 style={styles.title}>{list.title}</h1>
+          <EditableTitle
+            title={list.title}
+            onSave={async (newTitle) => {
+              await ShoppingListFactory.update(orgId, listId, { title: newTitle });
+              setList(prev => ({ ...prev, title: newTitle }));
+            }}
+          />
           <p style={styles.assignedLabel}>{assignedLabel}</p>
         </div>
         <StatusBadge status={list.status} />
@@ -515,6 +521,63 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EditableTitle — inline bewerken van de lijstjenaam
+// ---------------------------------------------------------------------------
+function EditableTitle({ title, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title);
+  const [saving, setSaving] = useState(false);
+
+  // Sync als title van buiten verandert
+  React.useEffect(() => { setValue(title); }, [title]);
+
+  async function handleSave() {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === title) { setEditing(false); setValue(title); return; }
+    setSaving(true);
+    try {
+      await onSave(trimmed);
+    } catch (err) {
+      console.error('Failed to save title:', err);
+      setValue(title);
+    } finally {
+      setSaving(false);
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', justifyContent: 'center' }}>
+        <input
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') { setEditing(false); setValue(title); } }}
+          autoFocus
+          style={{ fontSize: '1rem', fontWeight: '700', border: '1.5px solid #4CAF50', borderRadius: '6px', padding: '0.25rem 0.5rem', color: '#1a1a1a', outline: 'none', maxWidth: '160px', textAlign: 'center' }}
+        />
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '0.25rem 0.55rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer' }}>
+          {saving ? '...' : '✓'}
+        </button>
+        <button onClick={() => { setEditing(false); setValue(title); }}
+          style={{ padding: '0.25rem 0.45rem', backgroundColor: '#f0f0f0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer', color: '#666' }}>
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={() => setEditing(true)}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+      <h1 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#1a1a1a', margin: 0 }}>{title}</h1>
+      <span style={{ fontSize: '0.7rem', color: '#bbb' }}>✏️</span>
+    </button>
   );
 }
 
