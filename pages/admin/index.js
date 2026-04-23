@@ -1,52 +1,19 @@
 /**
  * pages/admin/index.js — Winkel Simpel
  *
- * App admin dashboard. Shows all organizations and allows creating new ones.
- * App admins manage the platform at the top level.
+ * App admin dashboard met tabs:
+ * - Organisaties: overzicht + aanmaken
+ * - Centrale bibliotheek: productsubmissions reviewen + centrale producten beheren
  */
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { OrganizationFactory } from '../../lib/dbSchema';
+import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, OrganizationFactory as OrgFactory } from '../../lib/dbSchema';
 
 function AdminDashboard({ claims }) {
   const router = useRouter();
-
-  const [organizations, setOrganizations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-
-  useEffect(() => {
-    loadOrganizations();
-  }, []);
-
-  async function loadOrganizations() {
-    setLoading(true);
-    try {
-      const snap = await OrganizationFactory.getAll();
-      setOrganizations(
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-      );
-    } catch (err) {
-      console.error('Failed to load organizations:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleDeleteOrg(org) {
-    if (!confirm(`Organisatie "${org.name}" verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
-    try {
-      await OrganizationFactory.delete(org.id);
-      setOrganizations((prev) => prev.filter((o) => o.id !== org.id));
-    } catch (err) {
-      console.error('Failed to delete organization:', err);
-      alert('Verwijderen mislukt. Probeer opnieuw.');
-    }
-  }
+  const [tab, setTab] = useState('orgs'); // 'orgs' | 'library'
 
   async function handleSignOut() {
     await signOut();
@@ -61,93 +28,273 @@ function AdminDashboard({ claims }) {
           <h1 style={styles.title}>Winkel Simpel</h1>
           <p style={styles.subtitle}>Beheerderspaneel</p>
         </div>
-        <button style={styles.signOutButton} onClick={handleSignOut}>
-          Afmelden
+        <button style={styles.signOutButton} onClick={handleSignOut}>Afmelden</button>
+      </div>
+
+      {/* Tabs */}
+      <div style={styles.tabs}>
+        <button style={{ ...styles.tab, ...(tab === 'orgs' ? styles.tabActive : {}) }} onClick={() => setTab('orgs')}>
+          Organisaties
+        </button>
+        <button style={{ ...styles.tab, ...(tab === 'library' ? styles.tabActive : {}) }} onClick={() => setTab('library')}>
+          Centrale bibliotheek
         </button>
       </div>
 
-      {/* Stats bar */}
+      {tab === 'orgs' && <OrgsTab claims={claims} router={router} />}
+      {tab === 'library' && <LibraryTab claims={claims} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OrgsTab
+// ---------------------------------------------------------------------------
+function OrgsTab({ claims, router }) {
+  const [organizations, setOrganizations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => { loadOrganizations(); }, []);
+
+  async function loadOrganizations() {
+    setLoading(true);
+    try {
+      const snap = await OrganizationFactory.getAll();
+      setOrganizations(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+      );
+    } finally { setLoading(false); }
+  }
+
+  async function handleDeleteOrg(org) {
+    if (!confirm(`Organisatie "${org.name}" verwijderen?`)) return;
+    await OrganizationFactory.delete(org.id);
+    setOrganizations(prev => prev.filter(o => o.id !== org.id));
+  }
+
+  return (
+    <>
       <div style={styles.statsBar}>
         <div style={styles.statItem}>
           <span style={styles.statValue}>{organizations.length}</span>
           <span style={styles.statLabel}>organisaties</span>
         </div>
       </div>
-
-      {/* Section header */}
       <div style={styles.sectionHeader}>
         <p style={styles.sectionTitle}>Organisaties</p>
-        <button style={styles.addButton} onClick={() => setShowForm(true)}>
-          + Nieuw
-        </button>
+        <button style={styles.addButton} onClick={() => setShowForm(true)}>+ Nieuw</button>
       </div>
-
-      {/* Organization list */}
       {loading ? (
         <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
       ) : organizations.length === 0 ? (
-        <div style={styles.centered}>
-          <p style={styles.hint}>Nog geen organisaties. Maak er een aan!</p>
-        </div>
+        <div style={styles.centered}><p style={styles.hint}>Nog geen organisaties.</p></div>
       ) : (
         <div style={styles.cardList}>
-          {organizations.map((org) => (
-            <OrgCard
-              key={org.id}
-              org={org}
+          {organizations.map(org => (
+            <OrgCard key={org.id} org={org}
               onManage={() => router.push(`/admin/users?org=${org.id}&name=${encodeURIComponent(org.name)}`)}
-              onDelete={() => handleDeleteOrg(org)}
-            />
+              onDelete={() => handleDeleteOrg(org)} />
           ))}
         </div>
       )}
-
-      {/* New organization modal */}
       {showForm && (
-        <NewOrgForm
-          claims={claims}
-          onSave={async () => {
-            setShowForm(false);
-            await loadOrganizations();
-          }}
-          onClose={() => setShowForm(false)}
-        />
+        <NewOrgForm claims={claims}
+          onSave={async () => { setShowForm(false); await loadOrganizations(); }}
+          onClose={() => setShowForm(false)} />
       )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LibraryTab
+// ---------------------------------------------------------------------------
+function LibraryTab({ claims }) {
+  const [pending, setPending] = useState([]);
+  const [central, setCentral] = useState([]);
+  const [orgs, setOrgs] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState('pending'); // 'pending' | 'approved'
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function loadAll() {
+    setLoading(true);
+    try {
+      const [pendingSnap, centralSnap, orgsSnap] = await Promise.all([
+        ProductSubmissionFactory.getPending(),
+        CentralProductFactory.getAll(),
+        OrganizationFactory.getAll(),
+      ]);
+      setPending(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCentral(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const orgMap = {};
+      orgsSnap.docs.forEach(d => { orgMap[d.id] = d.data().name; });
+      setOrgs(orgMap);
+    } finally { setLoading(false); }
+  }
+
+  async function handleApprove(submission) {
+    try {
+      // Maak centraal product aan
+      const ref = await CentralProductFactory.create({
+        name: submission.name,
+        imageUrl: submission.imageUrl,
+        unit: submission.unit,
+        approvedBy: claims.uid,
+        sourceOrgId: submission.orgId,
+        sourceProductId: submission.orgProductId,
+      });
+      // Update submission status
+      await ProductSubmissionFactory.approve(submission.id, ref.id);
+      setPending(prev => prev.filter(p => p.id !== submission.id));
+      setCentral(prev => [...prev, { id: ref.id, name: submission.name, imageUrl: submission.imageUrl, unit: submission.unit }]
+        .sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      alert('Goedkeuren mislukt: ' + err.message);
+    }
+  }
+
+  async function handleReject(submission) {
+    if (!confirm(`"${submission.name}" weigeren? Het product blijft beschikbaar in de bibliotheek van ${orgs[submission.orgId] || 'de organisatie'}.`)) return;
+    await ProductSubmissionFactory.reject(submission.id);
+    setPending(prev => prev.filter(p => p.id !== submission.id));
+  }
+
+  async function handleDeleteCentral(product) {
+    if (!confirm(`"${product.name}" uit de centrale bibliotheek verwijderen?`)) return;
+    await CentralProductFactory.delete(product.id);
+    setCentral(prev => prev.filter(p => p.id !== product.id));
+  }
+
+  if (loading) return <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>;
+
+  return (
+    <>
+      {/* Sub-tabs */}
+      <div style={styles.subTabs}>
+        <button style={{ ...styles.subTab, ...(section === 'pending' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('pending')}>
+          Wachtrij {pending.length > 0 && <span style={styles.badge}>{pending.length}</span>}
+        </button>
+        <button style={{ ...styles.subTab, ...(section === 'approved' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('approved')}>
+          Centrale bibliotheek ({central.length})
+        </button>
+      </div>
+
+      {section === 'pending' && (
+        <>
+          {pending.length === 0 ? (
+            <div style={styles.centered}><p style={styles.hint}>Geen producten in de wachtrij. ✅</p></div>
+          ) : (
+            <div style={styles.cardList}>
+              {pending.map(sub => (
+                <SubmissionCard key={sub.id} submission={sub}
+                  orgName={orgs[sub.orgId] || sub.orgId}
+                  onApprove={() => handleApprove(sub)}
+                  onReject={() => handleReject(sub)} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {section === 'approved' && (
+        <>
+          {central.length === 0 ? (
+            <div style={styles.centered}><p style={styles.hint}>Centrale bibliotheek is leeg.</p></div>
+          ) : (
+            <div style={styles.cardList}>
+              {central.map(p => (
+                <CentralProductCard key={p.id} product={p} onDelete={() => handleDeleteCentral(p)} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SubmissionCard
+// ---------------------------------------------------------------------------
+function SubmissionCard({ submission, orgName, onApprove, onReject }) {
+  return (
+    <div style={styles.submissionCard}>
+      <div style={styles.submissionImage}>
+        {submission.imageUrl ? (
+          <img src={submission.imageUrl} alt={submission.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={e => e.target.style.display = 'none'} />
+        ) : (
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </div>
+      <div style={styles.submissionBody}>
+        <p style={styles.submissionName}>{submission.name}</p>
+        <p style={styles.submissionMeta}>{submission.unit} · ingediend door <strong>{orgName}</strong></p>
+      </div>
+      <div style={styles.submissionActions}>
+        <button style={styles.approveButton} onClick={onApprove}>✓ Goedkeuren</button>
+        <button style={styles.rejectButton} onClick={onReject}>✗ Weigeren</button>
+      </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// OrgCard
+// CentralProductCard
+// ---------------------------------------------------------------------------
+function CentralProductCard({ product, onDelete }) {
+  return (
+    <div style={styles.card}>
+      <div style={{ ...styles.cardAvatar, borderRadius: '8px', backgroundColor: '#f5f5f5', overflow: 'hidden' }}>
+        {product.imageUrl ? (
+          <img src={product.imageUrl} alt={product.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={e => e.target.style.display = 'none'} />
+        ) : (
+          <span style={{ fontSize: '1.25rem' }}>🛍️</span>
+        )}
+      </div>
+      <div style={styles.cardBody}>
+        <p style={styles.cardName}>{product.name}</p>
+        <p style={styles.cardSub}>{product.unit}</p>
+      </div>
+      <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OrgCard (ongewijzigd)
 // ---------------------------------------------------------------------------
 function OrgCard({ org, onManage, onDelete }) {
   const createdDate = org.createdAt?.seconds
-    ? new Date(org.createdAt.seconds * 1000).toLocaleDateString('nl-BE')
-    : '';
-
+    ? new Date(org.createdAt.seconds * 1000).toLocaleDateString('nl-BE') : '';
   return (
     <div style={styles.card}>
-      <div style={styles.cardAvatar}>
-        {org.name?.[0]?.toUpperCase() || '?'}
-      </div>
+      <div style={styles.cardAvatar}>{org.name?.[0]?.toUpperCase() || '?'}</div>
       <div style={styles.cardBody} onClick={onManage}>
         <p style={styles.cardName}>{org.name}</p>
         {createdDate && <p style={styles.cardSub}>Aangemaakt op {createdDate}</p>}
       </div>
       <div style={styles.cardActions}>
-        <button style={styles.manageButton} onClick={onManage}>
-          Beheren
-        </button>
-        <button style={styles.deleteSmallButton} onClick={onDelete}>
-          🗑
-        </button>
+        <button style={styles.manageButton} onClick={onManage}>Beheren</button>
+        <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// NewOrgForm (modal)
+// NewOrgForm (ongewijzigd)
 // ---------------------------------------------------------------------------
 function NewOrgForm({ claims, onSave, onClose }) {
   const [name, setName] = useState('');
@@ -158,46 +305,30 @@ function NewOrgForm({ claims, onSave, onClose }) {
     e.preventDefault();
     if (!name.trim()) { setError('Geef de organisatie een naam.'); return; }
     setSaving(true);
-    setError('');
     try {
       await OrganizationFactory.create({ name: name.trim(), createdBy: claims.uid });
       onSave();
     } catch (err) {
-      console.error('Failed to create organization:', err);
-      setError('Aanmaken mislukt. Probeer opnieuw.');
-      setSaving(false);
+      setError('Aanmaken mislukt.'); setSaving(false);
     }
   }
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <div style={styles.modalHeader}>
           <h2 style={styles.modalTitle}>Nieuwe organisatie</h2>
           <button style={styles.closeButton} onClick={onClose}>✕</button>
         </div>
-
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
-            <label style={styles.label}>Naam van de organisatie</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={styles.input}
-              placeholder="bijv. De Regenboog vzw"
-              required
-              autoFocus
-            />
+            <label style={styles.label}>Naam</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              style={styles.input} placeholder="bijv. De Regenboog vzw" required autoFocus />
           </div>
-
           {error && <p style={styles.errorText}>{error}</p>}
-
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}
-          >
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
             {saving ? 'Aanmaken...' : 'Aanmaken'}
           </button>
         </form>
@@ -212,241 +343,54 @@ export default withRoleGuard(ROLES.APP_ADMIN, AdminDashboard);
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: {
-    minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-    fontFamily: 'system-ui, sans-serif',
-    padding: '1.5rem',
-    maxWidth: '600px',
-    margin: '0 auto',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '1.5rem',
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    margin: '0 0 0.2rem',
-  },
-  subtitle: {
-    fontSize: '0.875rem',
-    color: '#888',
-    margin: 0,
-  },
-  signOutButton: {
-    padding: '0.5rem 1rem',
-    backgroundColor: 'transparent',
-    border: '1.5px solid #ddd',
-    borderRadius: '8px',
-    fontSize: '0.875rem',
-    color: '#666',
-    cursor: 'pointer',
-  },
-  statsBar: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    border: '1.5px solid #eee',
-    padding: '1rem 1.25rem',
-    marginBottom: '1.5rem',
-    display: 'flex',
-    gap: '2rem',
-  },
-  statItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.15rem',
-  },
-  statValue: {
-    fontSize: '1.75rem',
-    fontWeight: '800',
-    color: '#1a1a1a',
-    lineHeight: 1,
-  },
-  statLabel: {
-    fontSize: '0.8rem',
-    color: '#aaa',
-    fontWeight: '500',
-  },
-  sectionHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '0.75rem',
-  },
-  sectionTitle: {
-    fontSize: '0.8rem',
-    fontWeight: '700',
-    color: '#aaa',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    margin: 0,
-  },
-  addButton: {
-    padding: '0.4rem 0.875rem',
-    backgroundColor: '#4CAF50',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '0.85rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  cardList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.6rem',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    border: '1.5px solid #eee',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.875rem',
-    padding: '0.875rem',
-  },
-  cardAvatar: {
-    width: '44px',
-    height: '44px',
-    borderRadius: '10px',
-    backgroundColor: '#E8F5E9',
-    color: '#2E7D32',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '800',
-    fontSize: '1.1rem',
-    flexShrink: 0,
-  },
-  cardBody: {
-    flex: 1,
-    cursor: 'pointer',
-  },
-  cardName: {
-    fontSize: '1rem',
-    fontWeight: '600',
-    color: '#1a1a1a',
-    margin: '0 0 0.15rem',
-  },
-  cardSub: {
-    fontSize: '0.8rem',
-    color: '#999',
-    margin: 0,
-  },
-  cardActions: {
-    display: 'flex',
-    gap: '0.4rem',
-    alignItems: 'center',
-  },
-  manageButton: {
-    padding: '0.35rem 0.75rem',
-    backgroundColor: '#E3F2FD',
-    color: '#1565C0',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.8rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  deleteSmallButton: {
-    padding: '0.35rem 0.5rem',
-    backgroundColor: '#FFEBEE',
-    color: '#c62828',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-  },
-  centered: {
-    display: 'flex',
-    justifyContent: 'center',
-    paddingTop: '3rem',
-  },
-  hint: {
-    color: '#aaa',
-    fontSize: '0.95rem',
-    margin: 0,
-  },
-  modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    display: 'flex',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    zIndex: 100,
-  },
-  modal: {
-    backgroundColor: '#fff',
-    borderRadius: '20px 20px 0 0',
-    padding: '1.5rem',
-    width: '100%',
-    maxWidth: '600px',
-    maxHeight: '92vh',
-    overflowY: 'auto',
-  },
-  modalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '1.25rem',
-  },
-  modalTitle: {
-    fontSize: '1.1rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    margin: 0,
-  },
-  closeButton: {
-    background: 'none',
-    border: 'none',
-    fontSize: '1.1rem',
-    color: '#aaa',
-    cursor: 'pointer',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-  },
-  label: {
-    fontSize: '0.875rem',
-    fontWeight: '600',
-    color: '#444',
-  },
-  input: {
-    padding: '0.75rem 1rem',
-    borderRadius: '10px',
-    border: '1.5px solid #ddd',
-    fontSize: '1rem',
-    backgroundColor: '#fff',
-  },
-  errorText: {
-    color: '#c62828',
-    fontSize: '0.875rem',
-    margin: 0,
-    padding: '0.6rem 0.8rem',
-    backgroundColor: '#FFEBEE',
-    borderRadius: '8px',
-  },
-  saveButton: {
-    padding: '0.875rem',
-    backgroundColor: '#4CAF50',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '10px',
-    fontSize: '1rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-    marginTop: '0.5rem',
-  },
+  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' },
+  title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.2rem' },
+  subtitle: { fontSize: '0.875rem', color: '#888', margin: 0 },
+  signOutButton: { padding: '0.5rem 1rem', backgroundColor: 'transparent', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.875rem', color: '#666', cursor: 'pointer' },
+  tabs: { display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '2px solid #eee', paddingBottom: 0 },
+  tab: { padding: '0.6rem 1rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.95rem', fontWeight: '600', color: '#aaa', cursor: 'pointer' },
+  tabActive: { color: '#1a1a1a', borderBottomColor: '#4CAF50' },
+  subTabs: { display: 'flex', gap: '0.5rem', marginBottom: '1rem' },
+  subTab: { padding: '0.5rem 0.875rem', backgroundColor: '#f0f0f0', border: 'none', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' },
+  subTabActive: { backgroundColor: '#1a1a1a', color: '#fff' },
+  badge: { backgroundColor: '#ef5350', color: '#fff', borderRadius: '20px', padding: '0.1rem 0.45rem', fontSize: '0.72rem', fontWeight: '700' },
+  statsBar: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '2rem' },
+  statItem: { display: 'flex', flexDirection: 'column', gap: '0.15rem' },
+  statValue: { fontSize: '1.75rem', fontWeight: '800', color: '#1a1a1a', lineHeight: 1 },
+  statLabel: { fontSize: '0.8rem', color: '#aaa', fontWeight: '500' },
+  sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' },
+  sectionTitle: { fontSize: '0.8rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 },
+  addButton: { padding: '0.4rem 0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' },
+  cardList: { display: 'flex', flexDirection: 'column', gap: '0.6rem' },
+  card: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem' },
+  cardAvatar: { width: '44px', height: '44px', borderRadius: '10px', backgroundColor: '#E8F5E9', color: '#2E7D32', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '1.1rem', flexShrink: 0 },
+  cardBody: { flex: 1, cursor: 'pointer' },
+  cardName: { fontSize: '1rem', fontWeight: '600', color: '#1a1a1a', margin: '0 0 0.15rem' },
+  cardSub: { fontSize: '0.8rem', color: '#999', margin: 0 },
+  cardActions: { display: 'flex', gap: '0.4rem', alignItems: 'center' },
+  manageButton: { padding: '0.35rem 0.75rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer' },
+  deleteSmallButton: { padding: '0.35rem 0.5rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.85rem', cursor: 'pointer' },
+  // Submission card
+  submissionCard: { backgroundColor: '#fff', borderRadius: '12px', border: '2px solid #FFF3E0', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem' },
+  submissionImage: { width: '56px', height: '56px', borderRadius: '8px', backgroundColor: '#f5f5f5', flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  submissionBody: { flex: 1, minWidth: 0 },
+  submissionName: { fontSize: '1rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.2rem' },
+  submissionMeta: { fontSize: '0.78rem', color: '#888', margin: 0 },
+  submissionActions: { display: 'flex', flexDirection: 'column', gap: '0.35rem', flexShrink: 0 },
+  approveButton: { padding: '0.35rem 0.65rem', backgroundColor: '#E8F5E9', color: '#2E7D32', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
+  rejectButton: { padding: '0.35rem 0.65rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
+  centered: { display: 'flex', justifyContent: 'center', paddingTop: '3rem' },
+  hint: { color: '#aaa', fontSize: '0.95rem', margin: 0 },
+  modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
+  modal: { backgroundColor: '#fff', borderRadius: '20px 20px 0 0', padding: '1.5rem', width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto' },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
+  modalTitle: { fontSize: '1.1rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
+  closeButton: { background: 'none', border: 'none', fontSize: '1.1rem', color: '#aaa', cursor: 'pointer' },
+  form: { display: 'flex', flexDirection: 'column', gap: '1rem' },
+  field: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },
+  label: { fontSize: '0.875rem', fontWeight: '600', color: '#444' },
+  input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', backgroundColor: '#fff' },
+  errorText: { color: '#c62828', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#FFEBEE', borderRadius: '8px' },
+  saveButton: { padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.5rem' },
 };
