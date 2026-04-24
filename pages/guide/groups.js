@@ -302,6 +302,7 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
   const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [focused, setFocused] = useState(false);
   // Lokale kopie van memberIds zodat suggestions meteen bijwerken na toevoegen
   const [localMemberIds, setLocalMemberIds] = useState(group.memberIds || []);
 
@@ -376,20 +377,23 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setTimeout(() => setFocused(false), 150)}
               placeholder="Naam typen om toe te voegen..."
               style={{ ...styles.searchInput, marginBottom: 0 }}
               disabled={saving}
             />
-            {suggestions.length > 0 && (
+            {focused && suggestions.length > 0 && (
               <div style={styles.suggestions}>
                 {suggestions.map(s => (
-                  <div key={s.id} style={styles.suggestion} onClick={() => addMember(s)}>
+                  <div key={s.id} style={styles.suggestion}
+                    onMouseDown={e => { e.preventDefault(); addMember(s); }}>
                     {s.firstName} {s.lastName}
                   </div>
                 ))}
               </div>
             )}
-            {search.trim().length > 0 && suggestions.length === 0 && (
+            {focused && search.trim().length > 0 && suggestions.length === 0 && (
               <div style={styles.suggestions}>
                 <div style={{ ...styles.suggestion, color: '#aaa', cursor: 'default' }}>Geen shoppers gevonden</div>
               </div>
@@ -807,7 +811,7 @@ const styles = {
   qrButton: { padding: '0.3rem 0.6rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' },
   editSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
   deleteSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
-  groupCard: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', overflow: 'hidden' },
+  groupCard: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee' },
   groupCardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', cursor: 'pointer' },
   expandIcon: { fontSize: '0.75rem', color: '#aaa', marginLeft: '0.25rem' },
   groupMemberList: { borderTop: '1px solid #f0f0f0', padding: '0.75rem' },
@@ -815,8 +819,8 @@ const styles = {
   tag: { display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#E8F5E9', color: '#2E7D32', borderRadius: '20px', padding: '0.25rem 0.6rem 0.25rem 0.75rem', fontSize: '0.82rem', fontWeight: '600' },
   tagRemove: { background: 'none', border: 'none', cursor: 'pointer', color: '#2E7D32', fontSize: '0.75rem', padding: '0', lineHeight: 1, opacity: 0.7 },
   searchInput: { width: '100%', padding: '0.6rem 0.875rem', borderRadius: '8px', border: '1.5px solid #ddd', fontSize: '0.9rem', backgroundColor: '#fff', boxSizing: 'border-box' },
-  suggestions: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1.5px solid #ddd', borderTop: 'none', borderRadius: '0 0 8px 8px', zIndex: 10, maxHeight: '180px', overflowY: 'auto' },
-  suggestion: { padding: '0.6rem 0.875rem', cursor: 'pointer', fontSize: '0.9rem', color: '#1a1a1a' },
+  suggestions: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1.5px solid #4CAF50', borderTop: 'none', borderRadius: '0 0 8px 8px', zIndex: 50, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' },
+  suggestion: { padding: '0.7rem 0.875rem', cursor: 'pointer', fontSize: '0.9rem', color: '#1a1a1a', borderBottom: '1px solid #f5f5f5' },
   emptyHint: { fontSize: '0.85rem', color: '#bbb', margin: '0.5rem 0', padding: '0.75rem', backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #eee' },
   modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
   modal: { backgroundColor: '#fff', borderRadius: '20px 20px 0 0', padding: '1.5rem', width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto' },
