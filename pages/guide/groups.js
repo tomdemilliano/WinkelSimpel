@@ -128,6 +128,11 @@ function GroupsAndMembers({ claims }) {
         <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
       ) : (
         <>
+          {/* Begeleiders sectie — alleen voor org_admin */}
+          {claims.role === 'org_admin' && (
+            <GuidesSection orgId={orgId} createdBy={uid} />
+          )}
+
           {/* Shoppers section */}
           <div style={styles.section}>
             <div style={styles.sectionHeader}>
@@ -461,7 +466,187 @@ function NewGroupForm({ orgId, onSave, onClose }) {
   );
 }
 
-export default withRoleGuard(ROLES.GUIDE, GroupsAndMembers);
+// ---------------------------------------------------------------------------
+// GuidesSection — begeleidersbeheer voor org_admin
+// ---------------------------------------------------------------------------
+function GuidesSection({ orgId, createdBy }) {
+  const [guides, setGuides] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => { loadGuides(); }, [orgId]);
+
+  async function loadGuides() {
+    setLoading(true);
+    try {
+      const snap = await MemberFactory.getByRole(orgId, 'guide');
+      const snapAdmin = await MemberFactory.getByRole(orgId, 'org_admin');
+      const all = [
+        ...snap.docs.map(d => ({ id: d.id, ...d.data() })),
+        ...snapAdmin.docs.map(d => ({ id: d.id, ...d.data() })),
+      ].sort((a, b) => a.firstName.localeCompare(b.firstName));
+      setGuides(all);
+    } finally { setLoading(false); }
+  }
+
+  async function handleDelete(guide) {
+    if (!confirm(`Begeleider "${guide.firstName} ${guide.lastName}" verwijderen?`)) return;
+    await MemberFactory.delete(orgId, guide.id);
+    setGuides(prev => prev.filter(g => g.id !== guide.id));
+  }
+
+  const ROLE_LABEL = { guide: 'Begeleider', org_admin: 'Org. beheerder' };
+
+  return (
+    <div style={styles.section}>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Begeleiders</p>
+        <button style={styles.sectionAddButton} onClick={() => setShowForm(true)}>+ Toevoegen</button>
+      </div>
+      {loading ? <p style={styles.emptyHint}>Laden...</p> : guides.length === 0 ? (
+        <p style={styles.emptyHint}>Nog geen begeleiders.</p>
+      ) : (
+        <div style={styles.cardList}>
+          {guides.map(guide => (
+            <div key={guide.id} style={styles.card}>
+              <div style={styles.cardAvatar}>{guide.firstName?.[0]?.toUpperCase() || '?'}</div>
+              <div style={styles.cardBody}>
+                <p style={styles.cardName}>{guide.firstName} {guide.lastName}</p>
+                <p style={styles.cardSub}>{guide.email} · {ROLE_LABEL[guide.role] || guide.role}</p>
+              </div>
+              <div style={styles.cardActions}>
+                <button style={styles.deleteSmallButton} onClick={() => handleDelete(guide)}>🗑</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {showForm && (
+        <NewGuideForm orgId={orgId} createdBy={createdBy}
+          onSave={async () => { setShowForm(false); await loadGuides(); }}
+          onClose={() => setShowForm(false)} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NewGuideForm — begeleider toevoegen met uitnodigingsmail
+// ---------------------------------------------------------------------------
+function NewGuideForm({ orgId, createdBy, onSave, onClose }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('guide');
+  const [sendInvite, setSendInvite] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [tempPassword, setTempPassword] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      setError('Vul alle velden in.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const { auth } = await import('../../lib/firebase');
+      const { getAuth } = await import('firebase/auth');
+      const idToken = await getAuth(auth.app).currentUser?.getIdToken();
+      const res = await fetch('/api/org/invite-guide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+        body: JSON.stringify({ orgId, firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), role, sendInvite }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message); setSaving(false); return; }
+      if (data.tempPassword) {
+        setTempPassword(data.tempPassword);
+      } else {
+        onSave();
+      }
+    } catch (err) {
+      setError('Er is een fout opgetreden.');
+      setSaving(false);
+    }
+  }
+
+  // Toon tijdelijk wachtwoord als geen mail gestuurd
+  if (tempPassword) {
+    return (
+      <div style={styles.modalOverlay} onClick={onSave}>
+        <div style={styles.modal} onClick={e => e.stopPropagation()}>
+          <div style={styles.modalHeader}>
+            <h2 style={styles.modalTitle}>Begeleider aangemaakt</h2>
+          </div>
+          <p style={{ color: '#555', fontSize: '0.9rem', marginBottom: '1rem' }}>
+            Geef dit tijdelijk wachtwoord door aan <strong>{firstName}</strong>. De begeleider wordt gevraagd dit te wijzigen bij de eerste aanmelding.
+          </p>
+          <div style={{ backgroundColor: '#f5f5f5', borderRadius: '10px', padding: '1rem', textAlign: 'center', marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>E-mailadres</p>
+            <p style={{ margin: '0 0 1rem', fontWeight: '700' }}>{email}</p>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>Tijdelijk wachtwoord</p>
+            <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: '900', letterSpacing: '0.1em', color: '#1a1a1a' }}>{tempPassword}</p>
+          </div>
+          <button style={styles.saveButton} onClick={onSave}>Sluiten</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Nieuwe begeleider</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Voornaam</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} style={styles.input} placeholder="Marie" required />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Achternaam</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} style={styles.input} placeholder="Janssen" required />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>E-mailadres</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={styles.input} placeholder="marie@organisatie.be" required />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Rol</label>
+            <select value={role} onChange={e => setRole(e.target.value)} style={styles.input}>
+              <option value="guide">Begeleider</option>
+              <option value="org_admin">Organisatiebeheerder</option>
+            </select>
+          </div>
+          {/* Uitnodigingsmail */}
+          <div style={{ backgroundColor: '#F3E5F5', borderRadius: '10px', padding: '0.875rem' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)}
+                style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0, accentColor: '#6A1B9A' }} />
+              <div>
+                <p style={{ margin: '0 0 0.2rem', fontSize: '0.9rem', fontWeight: '700', color: '#6A1B9A' }}>Uitnodigingsmail sturen</p>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#888', lineHeight: 1.4 }}>
+                  De begeleider ontvangt een mail met een tijdelijk wachtwoord en een link om aan te melden. Niet aangevinkt: het wachtwoord wordt hier getoond.
+                </p>
+              </div>
+            </label>
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving} style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Aanmaken...' : sendInvite ? 'Aanmaken & uitnodigen' : 'Aanmaken'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GroupsAndMembers);
 
 // ---------------------------------------------------------------------------
 // Styles
