@@ -18,6 +18,7 @@ import { MemberFactory } from '../../lib/dbSchema';
 // Role labels
 const ROLE_CONFIG = {
   guide: { label: 'Begeleider', color: '#1565C0', background: '#E3F2FD' },
+  org_admin: { label: 'Org. beheerder', color: '#E65100', background: '#FFF3E0' },
   shopper: { label: 'Shopper', color: '#2E7D32', background: '#E8F5E9' },
   app_admin: { label: 'Beheerder', color: '#6A1B9A', background: '#F3E5F5' },
 };
@@ -29,6 +30,7 @@ function UsersPage({ claims }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
 
   useEffect(() => {
     if (!router.isReady || !orgId) return;
@@ -104,6 +106,7 @@ function UsersPage({ claims }) {
             members={guides}
             emptyMessage="Nog geen begeleiders. Voeg er een toe via de knop rechtsboven."
             onDelete={handleDeleteMember}
+            onEdit={(member) => setEditingMember(member)}
           />
 
           <MemberSection
@@ -126,6 +129,19 @@ function UsersPage({ claims }) {
           onClose={() => setShowForm(false)}
         />
       )}
+
+      {/* Edit member modal */}
+      {editingMember && (
+        <EditMemberForm
+          orgId={orgId}
+          member={editingMember}
+          onSave={async () => {
+            setEditingMember(null);
+            await loadMembers();
+          }}
+          onClose={() => setEditingMember(null)}
+        />
+      )}
     </div>
   );
 }
@@ -133,7 +149,7 @@ function UsersPage({ claims }) {
 // ---------------------------------------------------------------------------
 // MemberSection
 // ---------------------------------------------------------------------------
-function MemberSection({ title, members, emptyMessage, onDelete }) {
+function MemberSection({ title, members, emptyMessage, onDelete, onEdit }) {
   return (
     <div style={styles.section}>
       <p style={styles.sectionTitle}>{title}</p>
@@ -146,6 +162,7 @@ function MemberSection({ title, members, emptyMessage, onDelete }) {
               key={member.id}
               member={member}
               onDelete={onDelete ? () => onDelete(member) : null}
+              onEdit={onEdit ? () => onEdit(member) : null}
             />
           ))}
         </div>
@@ -157,7 +174,7 @@ function MemberSection({ title, members, emptyMessage, onDelete }) {
 // ---------------------------------------------------------------------------
 // MemberCard
 // ---------------------------------------------------------------------------
-function MemberCard({ member, onDelete }) {
+function MemberCard({ member, onDelete, onEdit }) {
   const roleCfg = ROLE_CONFIG[member.role] || { label: member.role, color: '#666', background: '#eee' };
 
   return (
@@ -181,11 +198,14 @@ function MemberCard({ member, onDelete }) {
         }}>
           {roleCfg.label}
         </span>
-        {onDelete && (
-          <button style={styles.deleteSmallButton} onClick={onDelete}>
-            🗑
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '0.3rem' }}>
+          {onEdit && (
+            <button style={styles.editSmallButton} onClick={onEdit}>✏️</button>
+          )}
+          {onDelete && (
+            <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -394,6 +414,103 @@ function EditableOrgName({ orgId, initialName }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// EditMemberForm — naam en rol van begeleider wijzigen
+// ---------------------------------------------------------------------------
+function EditMemberForm({ orgId, member, onSave, onClose }) {
+  const [firstName, setFirstName] = useState(member.firstName || '');
+  const [lastName, setLastName] = useState(member.lastName || '');
+  const [role, setRole] = useState(member.role || 'guide');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('Vul voor- en achternaam in.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      // Update Firestore member document
+      await MemberFactory.update(orgId, member.id, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        role,
+      });
+
+      // Als de rol veranderd is, update ook de Firebase Auth custom claims
+      if (role !== member.role) {
+        const { getAuth } = await import('firebase/auth');
+        const { auth } = await import('../../lib/firebase');
+        const idToken = await getAuth(auth.app).currentUser?.getIdToken();
+        await fetch('/api/admin/update-member-role', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+          body: JSON.stringify({ uid: member.id, role, orgId }),
+        });
+      }
+
+      onSave();
+    } catch (err) {
+      console.error('Failed to update member:', err);
+      setError('Opslaan mislukt. Probeer opnieuw.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Begeleider bewerken</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.fieldRow}>
+            <div style={styles.field}>
+              <label style={styles.label}>Voornaam</label>
+              <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
+                style={styles.input} required autoFocus />
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Achternaam</label>
+              <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
+                style={styles.input} required />
+            </div>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Rol</label>
+            <select value={role} onChange={e => setRole(e.target.value)} style={styles.input}>
+              <option value="guide">Begeleider</option>
+              <option value="org_admin">Organisatiebeheerder</option>
+            </select>
+            {role === 'org_admin' && role !== member.role && (
+              <p style={{ fontSize: '0.8rem', color: '#E65100', margin: '0.25rem 0 0', lineHeight: 1.4 }}>
+                ⚠️ Deze persoon krijgt beheerdersrechten binnen de organisatie en kan begeleiders toevoegen.
+              </p>
+            )}
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>E-mailadres</label>
+            <input type="text" value={member.email} disabled
+              style={{ ...styles.input, backgroundColor: '#f5f5f5', color: '#aaa' }} />
+            <p style={{ fontSize: '0.775rem', color: '#aaa', margin: '0.2rem 0 0' }}>
+              E-mailadres kan niet gewijzigd worden.
+            </p>
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default withRoleGuard(ROLES.APP_ADMIN, UsersPage);
 
 // ---------------------------------------------------------------------------
@@ -520,6 +637,15 @@ const styles = {
     padding: '0.2rem 0.6rem',
     borderRadius: '20px',
     whiteSpace: 'nowrap',
+  },
+  editSmallButton: {
+    padding: '0.25rem 0.5rem',
+    backgroundColor: '#E3F2FD',
+    color: '#1565C0',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '0.8rem',
+    cursor: 'pointer',
   },
   deleteSmallButton: {
     padding: '0.25rem 0.5rem',
