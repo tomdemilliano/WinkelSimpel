@@ -213,70 +213,75 @@ function MemberCard({ member, onDelete, onEdit }) {
 
 // ---------------------------------------------------------------------------
 // NewGuideForm (modal)
-// Creates a guide: Firestore member document + Firebase Auth account
-// via a server-side API route.
 // ---------------------------------------------------------------------------
 function NewGuideForm({ orgId, onSave, onClose }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('guide');
+  const [sendInvite, setSendInvite] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [tempPassword, setTempPassword] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim()) {
-      setError('Vul voor- en achternaam in.');
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      setError('Vul alle velden in.');
       return;
     }
-    if (!email.trim()) {
-      setError('Vul een e-mailadres in.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Wachtwoord moet minimaal 8 tekens zijn.');
-      return;
-    }
-
     setSaving(true);
     setError('');
-
     try {
-      // Get current user's ID token for server-side verification
       const { getAuth } = await import('firebase/auth');
       const { auth } = await import('../../lib/firebase');
       const idToken = await getAuth(auth.app).currentUser?.getIdToken();
-
-      // Call server-side API route that uses Firebase Admin SDK
-      const res = await fetch('/api/admin/create-guide', {
+      const res = await fetch('/api/org/invite-guide', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
         body: JSON.stringify({
           orgId,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: email.trim(),
-          password,
+          role,
+          sendInvite,
         }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.message || 'Aanmaken mislukt. Probeer opnieuw.');
-        setSaving(false);
-        return;
+      if (!res.ok) { setError(data.message); setSaving(false); return; }
+      if (data.tempPassword) {
+        setTempPassword(data.tempPassword);
+      } else {
+        onSave();
       }
-
-      onSave();
     } catch (err) {
-      console.error('Failed to create guide:', err);
-      setError('Er is een fout opgetreden. Probeer opnieuw.');
+      setError('Er is een fout opgetreden.');
       setSaving(false);
     }
+  }
+
+  // Toon tijdelijk wachtwoord als geen mail gestuurd
+  if (tempPassword) {
+    return (
+      <div style={styles.modalOverlay} onClick={onSave}>
+        <div style={styles.modal} onClick={e => e.stopPropagation()}>
+          <div style={styles.modalHeader}>
+            <h2 style={styles.modalTitle}>Begeleider aangemaakt ✅</h2>
+          </div>
+          <p style={{ color: '#555', fontSize: '0.9rem', marginBottom: '1rem', lineHeight: 1.5 }}>
+            Geef dit tijdelijk wachtwoord door aan <strong>{firstName}</strong>. De begeleider wordt gevraagd dit te wijzigen bij de eerste aanmelding.
+          </p>
+          <div style={{ backgroundColor: '#f5f5f5', borderRadius: '10px', padding: '1.25rem', textAlign: 'center', marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>E-mailadres</p>
+            <p style={{ margin: '0 0 1rem', fontWeight: '700', color: '#1a1a1a' }}>{email}</p>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>Tijdelijk wachtwoord</p>
+            <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: '900', letterSpacing: '0.1em', color: '#1a1a1a' }}>{tempPassword}</p>
+          </div>
+          <button style={styles.saveButton} onClick={onSave}>Sluiten</button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -291,63 +296,49 @@ function NewGuideForm({ orgId, onSave, onClose }) {
           <div style={styles.fieldRow}>
             <div style={styles.field}>
               <label style={styles.label}>Voornaam</label>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                style={styles.input}
-                placeholder="Marie"
-                required
-              />
+              <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
+                style={styles.input} placeholder="Marie" required />
             </div>
             <div style={styles.field}>
               <label style={styles.label}>Achternaam</label>
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                style={styles.input}
-                placeholder="Janssen"
-                required
-              />
+              <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
+                style={styles.input} placeholder="Janssen" required />
             </div>
           </div>
 
           <div style={styles.field}>
             <label style={styles.label}>E-mailadres</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={styles.input}
-              placeholder="marie@organisatie.be"
-              required
-            />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              style={styles.input} placeholder="marie@organisatie.be" required />
           </div>
 
           <div style={styles.field}>
-            <label style={styles.label}>Tijdelijk wachtwoord</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={styles.input}
-              placeholder="Minimaal 8 tekens"
-              required
-            />
-            <p style={styles.fieldHint}>
-              De begeleider kan dit later zelf wijzigen.
-            </p>
+            <label style={styles.label}>Rol</label>
+            <select value={role} onChange={e => setRole(e.target.value)} style={styles.input}>
+              <option value="guide">Begeleider</option>
+              <option value="org_admin">Organisatiebeheerder</option>
+            </select>
+          </div>
+
+          {/* Uitnodigingsmail */}
+          <div style={{ backgroundColor: '#F3E5F5', borderRadius: '10px', padding: '0.875rem' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)}
+                style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0, accentColor: '#6A1B9A' }} />
+              <div>
+                <p style={{ margin: '0 0 0.2rem', fontSize: '0.9rem', fontWeight: '700', color: '#6A1B9A' }}>Uitnodigingsmail sturen</p>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#888', lineHeight: 1.4 }}>
+                  De begeleider ontvangt een mail met tijdelijk wachtwoord en een aanmeldlink. Niet aangevinkt: het wachtwoord wordt hier getoond.
+                </p>
+              </div>
+            </label>
           </div>
 
           {error && <p style={styles.errorText}>{error}</p>}
 
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? 'Aanmaken...' : 'Begeleider aanmaken'}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Aanmaken...' : sendInvite ? 'Aanmaken & uitnodigen' : 'Aanmaken'}
           </button>
         </form>
       </div>
