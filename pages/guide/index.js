@@ -74,7 +74,7 @@ function GuideDashboard({ claims }) {
   );
 }
 
-export default withRoleGuard(ROLES.GUIDE, GuideDashboard);
+export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GuideDashboard);
 
 // ---------------------------------------------------------------------------
 // Styles
