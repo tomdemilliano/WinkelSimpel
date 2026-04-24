@@ -27,6 +27,7 @@ function GroupsAndMembers({ claims }) {
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [showMemberForm, setShowMemberForm] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
+  const [editingShopper, setEditingShopper] = useState(null);
 
   useEffect(() => {
     loadAll();
@@ -152,6 +153,7 @@ function GroupsAndMembers({ claims }) {
                     shopper={shopper}
                     orgId={orgId}
                     onDelete={() => handleDeleteShopper(shopper)}
+                    onEdit={() => setEditingShopper(shopper)}
                     onQr={() => router.push(`/guide/qr/${shopper.id}`)}
                   />
                 ))}
@@ -192,6 +194,16 @@ function GroupsAndMembers({ claims }) {
         </>
       )}
 
+      {/* Edit shopper modal */}
+      {editingShopper && (
+        <EditShopperForm
+          orgId={orgId}
+          shopper={editingShopper}
+          onSave={async () => { setEditingShopper(null); await loadAll(); }}
+          onClose={() => setEditingShopper(null)}
+        />
+      )}
+
       {/* New shopper modal */}
       {showMemberForm && (
         <NewShopperForm
@@ -223,7 +235,7 @@ function GroupsAndMembers({ claims }) {
 // ---------------------------------------------------------------------------
 // ShopperCard
 // ---------------------------------------------------------------------------
-function ShopperCard({ shopper, orgId, onDelete, onQr }) {
+function ShopperCard({ shopper, orgId, onDelete, onEdit, onQr }) {
   return (
     <div style={styles.card}>
       <div style={styles.cardAvatar}>
@@ -234,12 +246,9 @@ function ShopperCard({ shopper, orgId, onDelete, onQr }) {
         <p style={styles.cardSub}>Shopper</p>
       </div>
       <div style={styles.cardActions}>
-        <button style={styles.qrButton} onClick={onQr} title="QR-kaartje">
-          QR
-        </button>
-        <button style={styles.deleteSmallButton} onClick={onDelete} title="Verwijderen">
-          🗑
-        </button>
+        <button style={styles.qrButton} onClick={onQr} title="QR-kaartje">QR</button>
+        <button style={styles.editSmallButton} onClick={onEdit} title="Bewerken">✏️</button>
+        <button style={styles.deleteSmallButton} onClick={onDelete} title="Verwijderen">🗑</button>
       </div>
     </div>
   );
@@ -467,12 +476,67 @@ function NewGroupForm({ orgId, onSave, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
+// EditShopperForm — naam van shopper wijzigen
+// ---------------------------------------------------------------------------
+function EditShopperForm({ orgId, shopper, onSave, onClose }) {
+  const [firstName, setFirstName] = useState(shopper.firstName || '');
+  const [lastName, setLastName] = useState(shopper.lastName || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) { setError('Vul voor- en achternaam in.'); return; }
+    setSaving(true);
+    try {
+      await MemberFactory.update(orgId, shopper.id, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+      onSave();
+    } catch (err) {
+      setError('Opslaan mislukt. Probeer opnieuw.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Shopper bewerken</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Voornaam</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
+              style={styles.input} required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Achternaam</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
+              style={styles.input} required />
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // GuidesSection — begeleidersbeheer voor org_admin
 // ---------------------------------------------------------------------------
 function GuidesSection({ orgId, createdBy }) {
   const [guides, setGuides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingGuide, setEditingGuide] = useState(null);
 
   useEffect(() => { loadGuides(); }, [orgId]);
 
@@ -515,11 +579,17 @@ function GuidesSection({ orgId, createdBy }) {
                 <p style={styles.cardSub}>{guide.email} · {ROLE_LABEL[guide.role] || guide.role}</p>
               </div>
               <div style={styles.cardActions}>
+                <button style={styles.editSmallButton} onClick={() => setEditingGuide(guide)}>✏️</button>
                 <button style={styles.deleteSmallButton} onClick={() => handleDelete(guide)}>🗑</button>
               </div>
             </div>
           ))}
         </div>
+      )}
+      {editingGuide && (
+        <EditGuideForm orgId={orgId} guide={editingGuide}
+          onSave={async () => { setEditingGuide(null); await loadGuides(); }}
+          onClose={() => setEditingGuide(null)} />
       )}
       {showForm && (
         <NewGuideForm orgId={orgId} createdBy={createdBy}
@@ -646,6 +716,70 @@ function NewGuideForm({ orgId, createdBy, onSave, onClose }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// EditGuideForm — naam van begeleider wijzigen door org_admin
+// ---------------------------------------------------------------------------
+function EditGuideForm({ orgId, guide, onSave, onClose }) {
+  const [firstName, setFirstName] = useState(guide.firstName || '');
+  const [lastName, setLastName] = useState(guide.lastName || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) { setError('Vul voor- en achternaam in.'); return; }
+    setSaving(true);
+    try {
+      await MemberFactory.update(orgId, guide.id, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+      onSave();
+    } catch (err) {
+      setError('Opslaan mislukt. Probeer opnieuw.');
+      setSaving(false);
+    }
+  }
+
+  const ROLE_LABEL = { guide: 'Begeleider', org_admin: 'Org. beheerder' };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Begeleider bewerken</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Voornaam</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
+              style={styles.input} required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Achternaam</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
+              style={styles.input} required />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Rol</label>
+            <input type="text" value={ROLE_LABEL[guide.role] || guide.role} disabled
+              style={{ ...styles.input, backgroundColor: '#f5f5f5', color: '#aaa' }} />
+            <p style={{ fontSize: '0.775rem', color: '#aaa', margin: '0.2rem 0 0' }}>
+              Rol kan alleen gewijzigd worden door een platform-beheerder.
+            </p>
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GroupsAndMembers);
 
 // ---------------------------------------------------------------------------
@@ -762,6 +896,15 @@ const styles = {
     borderRadius: '6px',
     fontSize: '0.8rem',
     fontWeight: '700',
+    cursor: 'pointer',
+  },
+  editSmallButton: {
+    padding: '0.35rem 0.5rem',
+    backgroundColor: '#E3F2FD',
+    color: '#1565C0',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '0.85rem',
     cursor: 'pointer',
   },
   deleteSmallButton: {
