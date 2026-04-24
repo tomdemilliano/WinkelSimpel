@@ -1,314 +1,387 @@
 /**
  * pages/guide/groups.js — Winkel Simpel
  *
- * Groups and members management for guides.
- * Guides can create groups, add shoppers (members) to groups,
- * and generate QR cards for individual shoppers.
+ * Tabbladen: Shoppers | Groepen | Begeleiders (alleen org_admin)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
 import { GroupFactory, MemberFactory } from '../../lib/dbSchema';
 import { generateQrToken } from '../../lib/qr';
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 function GroupsAndMembers({ claims }) {
   const router = useRouter();
-  const { orgId, uid } = claims;
+  const { orgId, uid, role } = claims;
+  const isOrgAdmin = role === 'org_admin';
 
+  const [tab, setTab] = useState('shoppers');
   const [groups, setGroups] = useState([]);
   const [shoppers, setShoppers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingShoppers, setLoadingShoppers] = useState(true);
+  const [loadingGroups, setLoadingGroups] = useState(true);
 
-  // Modal state
-  const [showGroupForm, setShowGroupForm] = useState(false);
-  const [showMemberForm, setShowMemberForm] = useState(false);
-  const [editingGroup, setEditingGroup] = useState(null);
-  const [editingShopper, setEditingShopper] = useState(null);
+  useEffect(() => { loadShoppers(); loadGroups(); }, [orgId]);
 
-  useEffect(() => {
-    loadAll();
-  }, [orgId]);
-
-  async function loadAll() {
-    setLoading(true);
+  async function loadShoppers() {
+    setLoadingShoppers(true);
     try {
-      const [groupsSnap, shoppersSnap] = await Promise.all([
-        GroupFactory.getAll(orgId),
-        MemberFactory.getByRole(orgId, 'shopper'),
-      ]);
-      setGroups(groupsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setShoppers(shoppersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      console.error('Failed to load groups/members:', err);
-    } finally {
-      setLoading(false);
-    }
+      const snap = await MemberFactory.getByRole(orgId, 'shopper');
+      setShoppers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error(err); }
+    finally { setLoadingShoppers(false); }
   }
 
-  // -------------------------------------------------------------------------
-  // Group actions
-  // -------------------------------------------------------------------------
+  async function loadGroups() {
+    setLoadingGroups(true);
+    try {
+      const snap = await GroupFactory.getAll(orgId);
+      setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error(err); }
+    finally { setLoadingGroups(false); }
+  }
+
+  async function handleDeleteShopper(shopper) {
+    if (!confirm(`Shopper "${shopper.firstName} ${shopper.lastName}" verwijderen?`)) return;
+    try {
+      await Promise.all(
+        groups.filter(g => g.memberIds?.includes(shopper.id))
+          .map(g => GroupFactory.update(orgId, g.id, { memberIds: g.memberIds.filter(id => id !== shopper.id) }))
+      );
+      await MemberFactory.delete(orgId, shopper.id);
+      setShoppers(prev => prev.filter(s => s.id !== shopper.id));
+      setGroups(prev => prev.map(g => ({ ...g, memberIds: (g.memberIds || []).filter(id => id !== shopper.id) })));
+    } catch (err) { alert('Verwijderen mislukt.'); }
+  }
+
   async function handleDeleteGroup(group) {
     if (!confirm(`Groep "${group.name}" verwijderen?`)) return;
     try {
       await GroupFactory.delete(orgId, group.id);
-      setGroups((prev) => prev.filter((g) => g.id !== group.id));
-    } catch (err) {
-      console.error('Failed to delete group:', err);
-      alert('Verwijderen mislukt. Probeer opnieuw.');
-    }
+      setGroups(prev => prev.filter(g => g.id !== group.id));
+    } catch (err) { alert('Verwijderen mislukt.'); }
   }
 
-  async function handleToggleMemberInGroup(groupId, memberId, currentMemberIds) {
-    const isInGroup = currentMemberIds.includes(memberId);
-    const newMemberIds = isInGroup
-      ? currentMemberIds.filter((id) => id !== memberId)
-      : [...currentMemberIds, memberId];
+  const tabs = [
+    { id: 'shoppers', label: 'Shoppers' },
+    { id: 'groups', label: 'Groepen' },
+    ...(isOrgAdmin ? [{ id: 'guides', label: 'Begeleiders' }] : []),
+  ];
 
-    try {
-      await GroupFactory.update(orgId, groupId, { memberIds: newMemberIds });
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.id === groupId ? { ...g, memberIds: newMemberIds } : g
-        )
-      );
-    } catch (err) {
-      console.error('Failed to update group members:', err);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Shopper actions
-  // -------------------------------------------------------------------------
-  async function handleDeleteShopper(shopper) {
-    if (!confirm(`Shopper "${shopper.firstName} ${shopper.lastName}" verwijderen?`)) return;
-    try {
-      // Remove from all groups first
-      const updatedGroups = await Promise.all(
-        groups
-          .filter((g) => g.memberIds?.includes(shopper.id))
-          .map((g) =>
-            GroupFactory.update(orgId, g.id, {
-              memberIds: g.memberIds.filter((id) => id !== shopper.id),
-            })
-          )
-      );
-      await MemberFactory.delete(orgId, shopper.id);
-      setShoppers((prev) => prev.filter((s) => s.id !== shopper.id));
-      setGroups((prev) =>
-        prev.map((g) => ({
-          ...g,
-          memberIds: (g.memberIds || []).filter((id) => id !== shopper.id),
-        }))
-      );
-    } catch (err) {
-      console.error('Failed to delete shopper:', err);
-      alert('Verwijderen mislukt. Probeer opnieuw.');
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
   return (
     <div style={styles.page}>
-      {/* Header */}
       <div style={styles.header}>
-        <button style={styles.backButton} onClick={() => router.push('/guide')}>
-          ← Terug
-        </button>
+        <button style={styles.backButton} onClick={() => router.push('/guide')}>← Terug</button>
         <h1 style={styles.title}>Groepen & leden</h1>
         <div style={{ width: 60 }} />
       </div>
 
-      {loading ? (
-        <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
-      ) : (
-        <>
-          {/* Begeleiders sectie — alleen voor org_admin */}
-          {claims.role === 'org_admin' && (
-            <GuidesSection orgId={orgId} createdBy={uid} />
-          )}
+      {/* Tabs */}
+      <div style={styles.tabs}>
+        {tabs.map(t => (
+          <button key={t.id}
+            style={{ ...styles.tab, ...(tab === t.id ? styles.tabActive : {}) }}
+            onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-          {/* Shoppers section */}
-          <div style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <p style={styles.sectionTitle}>Shoppers</p>
-              <button style={styles.sectionAddButton} onClick={() => setShowMemberForm(true)}>
-                + Toevoegen
-              </button>
-            </div>
-
-            {shoppers.length === 0 ? (
-              <p style={styles.emptyHint}>Nog geen shoppers. Voeg er een toe!</p>
-            ) : (
-              <div style={styles.cardList}>
-                {shoppers.map((shopper) => (
-                  <ShopperCard
-                    key={shopper.id}
-                    shopper={shopper}
-                    orgId={orgId}
-                    onDelete={() => handleDeleteShopper(shopper)}
-                    onEdit={() => setEditingShopper(shopper)}
-                    onQr={() => router.push(`/guide/qr/${shopper.id}`)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Groups section */}
-          <div style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <p style={styles.sectionTitle}>Groepen</p>
-              <button
-                style={styles.sectionAddButton}
-                onClick={() => { setEditingGroup(null); setShowGroupForm(true); }}
-              >
-                + Toevoegen
-              </button>
-            </div>
-
-            {groups.length === 0 ? (
-              <p style={styles.emptyHint}>Nog geen groepen.</p>
-            ) : (
-              <div style={styles.cardList}>
-                {groups.map((group) => (
-                  <GroupCard
-                    key={group.id}
-                    group={group}
-                    shoppers={shoppers}
-                    onDelete={() => handleDeleteGroup(group)}
-                    onToggleMember={(memberId) =>
-                      handleToggleMemberInGroup(group.id, memberId, group.memberIds || [])
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Edit shopper modal */}
-      {editingShopper && (
-        <EditShopperForm
+      {/* Shoppers tab */}
+      {tab === 'shoppers' && (
+        <ShoppersTab
+          shoppers={shoppers}
+          loading={loadingShoppers}
           orgId={orgId}
-          shopper={editingShopper}
-          onSave={async () => { setEditingShopper(null); await loadAll(); }}
-          onClose={() => setEditingShopper(null)}
+          uid={uid}
+          onReload={loadShoppers}
+          onDelete={handleDeleteShopper}
+          onQr={(s) => router.push(`/guide/qr/${s.id}`)}
         />
       )}
 
-      {/* New shopper modal */}
-      {showMemberForm && (
-        <NewShopperForm
+      {/* Groepen tab */}
+      {tab === 'groups' && (
+        <GroupsTab
+          groups={groups}
+          shoppers={shoppers}
+          loading={loadingGroups}
           orgId={orgId}
-          createdBy={uid}
-          onSave={async () => {
-            setShowMemberForm(false);
-            await loadAll();
-          }}
-          onClose={() => setShowMemberForm(false)}
+          onReload={loadGroups}
+          onDelete={handleDeleteGroup}
         />
       )}
 
-      {/* New group modal */}
-      {showGroupForm && (
-        <NewGroupForm
-          orgId={orgId}
-          onSave={async () => {
-            setShowGroupForm(false);
-            await loadAll();
-          }}
-          onClose={() => setShowGroupForm(false)}
-        />
+      {/* Begeleiders tab */}
+      {tab === 'guides' && isOrgAdmin && (
+        <GuidesTab orgId={orgId} uid={uid} />
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ShopperCard
+// ShoppersTab
 // ---------------------------------------------------------------------------
-function ShopperCard({ shopper, orgId, onDelete, onEdit, onQr }) {
+function ShoppersTab({ shoppers, loading, orgId, uid, onReload, onDelete, onQr }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingShopper, setEditingShopper] = useState(null);
+
   return (
-    <div style={styles.card}>
-      <div style={styles.cardAvatar}>
-        {shopper.firstName?.[0]?.toUpperCase() || '?'}
+    <div style={styles.tabContent}>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Shoppers ({shoppers.length})</p>
+        <button style={styles.sectionAddButton} onClick={() => setShowForm(true)}>+ Toevoegen</button>
       </div>
-      <div style={styles.cardBody}>
-        <p style={styles.cardName}>{shopper.firstName} {shopper.lastName}</p>
-        <p style={styles.cardSub}>Shopper</p>
-      </div>
-      <div style={styles.cardActions}>
-        <button style={styles.qrButton} onClick={onQr} title="QR-kaartje">QR</button>
-        <button style={styles.editSmallButton} onClick={onEdit} title="Bewerken">✏️</button>
-        <button style={styles.deleteSmallButton} onClick={onDelete} title="Verwijderen">🗑</button>
-      </div>
+
+      {loading ? <p style={styles.emptyHint}>Laden...</p>
+        : shoppers.length === 0 ? <p style={styles.emptyHint}>Nog geen shoppers. Voeg er een toe!</p>
+        : (
+          <div style={styles.cardList}>
+            {shoppers.map(s => (
+              <div key={s.id} style={styles.card}>
+                <div style={styles.cardAvatar}>{s.firstName?.[0]?.toUpperCase() || '?'}</div>
+                <div style={styles.cardBody}>
+                  <p style={styles.cardName}>{s.firstName} {s.lastName}</p>
+                  <p style={styles.cardSub}>Shopper</p>
+                </div>
+                <div style={styles.cardActions}>
+                  <button style={styles.qrButton} onClick={() => onQr(s)}>QR</button>
+                  <button style={styles.editSmallButton} onClick={() => setEditingShopper(s)}>✏️</button>
+                  <button style={styles.deleteSmallButton} onClick={() => onDelete(s)}>🗑</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      {showForm && (
+        <NewShopperForm orgId={orgId} createdBy={uid}
+          onSave={async () => { setShowForm(false); await onReload(); }}
+          onClose={() => setShowForm(false)} />
+      )}
+      {editingShopper && (
+        <EditShopperForm orgId={orgId} shopper={editingShopper}
+          onSave={async () => { setEditingShopper(null); await onReload(); }}
+          onClose={() => setEditingShopper(null)} />
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// GroupCard
+// GroupsTab
 // ---------------------------------------------------------------------------
-function GroupCard({ group, shoppers, onDelete, onToggleMember }) {
+function GroupsTab({ groups, shoppers, loading, orgId, onReload, onDelete }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(null);
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Groepen ({groups.length})</p>
+        <button style={styles.sectionAddButton} onClick={() => setShowForm(true)}>+ Toevoegen</button>
+      </div>
+
+      {loading ? <p style={styles.emptyHint}>Laden...</p>
+        : groups.length === 0 ? <p style={styles.emptyHint}>Nog geen groepen.</p>
+        : (
+          <div style={styles.cardList}>
+            {groups.map(group => (
+              <GroupCard key={group.id} group={group} shoppers={shoppers} orgId={orgId}
+                onEdit={() => setEditingGroup(group)}
+                onDelete={() => onDelete(group)}
+                onReload={onReload} />
+            ))}
+          </div>
+        )}
+
+      {showForm && (
+        <NewGroupForm orgId={orgId}
+          onSave={async () => { setShowForm(false); await onReload(); }}
+          onClose={() => setShowForm(false)} />
+      )}
+      {editingGroup && (
+        <EditGroupForm orgId={orgId} group={editingGroup}
+          onSave={async () => { setEditingGroup(null); await onReload(); }}
+          onClose={() => setEditingGroup(null)} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GuidesTab — alleen voor org_admin
+// ---------------------------------------------------------------------------
+function GuidesTab({ orgId, uid }) {
+  const [guides, setGuides] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingGuide, setEditingGuide] = useState(null);
+
+  useEffect(() => { loadGuides(); }, [orgId]);
+
+  async function loadGuides() {
+    setLoading(true);
+    try {
+      const [snap, snapAdmin] = await Promise.all([
+        MemberFactory.getByRole(orgId, 'guide'),
+        MemberFactory.getByRole(orgId, 'org_admin'),
+      ]);
+      setGuides([
+        ...snap.docs.map(d => ({ id: d.id, ...d.data() })),
+        ...snapAdmin.docs.map(d => ({ id: d.id, ...d.data() })),
+      ].sort((a, b) => a.firstName.localeCompare(b.firstName)));
+    } finally { setLoading(false); }
+  }
+
+  async function handleDelete(guide) {
+    if (!confirm(`Begeleider "${guide.firstName} ${guide.lastName}" verwijderen?`)) return;
+    await MemberFactory.delete(orgId, guide.id);
+    setGuides(prev => prev.filter(g => g.id !== guide.id));
+  }
+
+  const ROLE_CONFIG = {
+    guide: { label: 'Begeleider', color: '#1565C0', bg: '#E3F2FD' },
+    org_admin: { label: 'Org. beheerder', color: '#E65100', bg: '#FFF3E0' },
+  };
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Begeleiders ({guides.length})</p>
+        <button style={styles.sectionAddButton} onClick={() => setShowForm(true)}>+ Toevoegen</button>
+      </div>
+
+      {loading ? <p style={styles.emptyHint}>Laden...</p>
+        : guides.length === 0 ? <p style={styles.emptyHint}>Nog geen begeleiders.</p>
+        : (
+          <div style={styles.cardList}>
+            {guides.map(guide => {
+              const cfg = ROLE_CONFIG[guide.role] || ROLE_CONFIG.guide;
+              return (
+                <div key={guide.id} style={styles.card}>
+                  <div style={styles.cardAvatar}>{guide.firstName?.[0]?.toUpperCase() || '?'}</div>
+                  <div style={styles.cardBody}>
+                    <p style={styles.cardName}>{guide.firstName} {guide.lastName}</p>
+                    <p style={styles.cardSub}>{guide.email}</p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: '700', color: cfg.color, backgroundColor: cfg.bg, padding: '0.15rem 0.5rem', borderRadius: '20px' }}>
+                      {cfg.label}
+                    </span>
+                    <div style={styles.cardActions}>
+                      <button style={styles.editSmallButton} onClick={() => setEditingGuide(guide)}>✏️</button>
+                      <button style={styles.deleteSmallButton} onClick={() => handleDelete(guide)}>🗑</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      {showForm && (
+        <NewGuideForm orgId={orgId} createdBy={uid}
+          onSave={async () => { setShowForm(false); await loadGuides(); }}
+          onClose={() => setShowForm(false)} />
+      )}
+      {editingGuide && (
+        <EditGuideForm orgId={orgId} guide={editingGuide}
+          onSave={async () => { setEditingGuide(null); await loadGuides(); }}
+          onClose={() => setEditingGuide(null)} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GroupCard — met tag-input voor leden
+// ---------------------------------------------------------------------------
+function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
   const [expanded, setExpanded] = useState(false);
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
   const memberIds = group.memberIds || [];
-  const memberCount = memberIds.length;
+  const members = shoppers.filter(s => memberIds.includes(s.id));
+
+  const suggestions = shoppers.filter(s =>
+    !memberIds.includes(s.id) &&
+    `${s.firstName} ${s.lastName}`.toLowerCase().includes(search.toLowerCase()) &&
+    search.trim().length > 0
+  );
+
+  async function addMember(shopper) {
+    setSaving(true);
+    const newIds = [...memberIds, shopper.id];
+    try {
+      await GroupFactory.update(orgId, group.id, { memberIds: newIds });
+      group.memberIds = newIds;
+      setSearch('');
+      await onReload();
+    } finally { setSaving(false); }
+  }
+
+  async function removeMember(shopperId) {
+    const newIds = memberIds.filter(id => id !== shopperId);
+    try {
+      await GroupFactory.update(orgId, group.id, { memberIds: newIds });
+      await onReload();
+    } catch { }
+  }
 
   return (
     <div style={styles.groupCard}>
-      <div style={styles.groupCardHeader} onClick={() => setExpanded((v) => !v)}>
+      <div style={styles.groupCardHeader} onClick={() => setExpanded(v => !v)}>
         <div>
           <p style={styles.cardName}>{group.name}</p>
-          <p style={styles.cardSub}>{memberCount} {memberCount === 1 ? 'lid' : 'leden'}</p>
+          <p style={styles.cardSub}>{memberIds.length} {memberIds.length === 1 ? 'lid' : 'leden'}</p>
         </div>
-        <div style={styles.groupCardRight}>
-          <button style={styles.deleteSmallButton} onClick={(e) => { e.stopPropagation(); onDelete(); }}>
-            🗑
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <button style={styles.editSmallButton} onClick={e => { e.stopPropagation(); onEdit(); }}>✏️</button>
+          <button style={styles.deleteSmallButton} onClick={e => { e.stopPropagation(); onDelete(); }}>🗑</button>
           <span style={styles.expandIcon}>{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
 
       {expanded && (
         <div style={styles.groupMemberList}>
-          {shoppers.length === 0 && (
-            <p style={styles.emptyHint}>Nog geen shoppers beschikbaar.</p>
-          )}
-          {shoppers.map((shopper) => {
-            const inGroup = memberIds.includes(shopper.id);
-            return (
-              <div
-                key={shopper.id}
-                style={{
-                  ...styles.groupMemberRow,
-                  backgroundColor: inGroup ? '#E8F5E9' : '#fff',
-                }}
-                onClick={() => onToggleMember(shopper.id)}
-              >
-                <div style={styles.cardAvatar}>
-                  {shopper.firstName?.[0]?.toUpperCase() || '?'}
-                </div>
-                <p style={styles.pickerName}>
-                  {shopper.firstName} {shopper.lastName}
-                </p>
-                <div style={{
-                  ...styles.checkbox,
-                  backgroundColor: inGroup ? '#4CAF50' : '#fff',
-                  borderColor: inGroup ? '#4CAF50' : '#ccc',
-                }}>
-                  {inGroup && <span style={styles.checkmark}>✓</span>}
-                </div>
+          {/* Tags van huidige leden */}
+          <div style={styles.tagContainer}>
+            {members.length === 0 && <p style={{ fontSize: '0.8rem', color: '#bbb', margin: 0 }}>Nog geen leden</p>}
+            {members.map(s => (
+              <div key={s.id} style={styles.tag}>
+                <span>{s.firstName} {s.lastName}</span>
+                <button onClick={() => removeMember(s.id)} style={styles.tagRemove}>✕</button>
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          {/* Zoek en voeg toe */}
+          <div style={{ position: 'relative', marginTop: '0.5rem' }}>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Naam typen om toe te voegen..."
+              style={{ ...styles.searchInput, marginBottom: 0 }}
+              disabled={saving}
+            />
+            {suggestions.length > 0 && (
+              <div style={styles.suggestions}>
+                {suggestions.map(s => (
+                  <div key={s.id} style={styles.suggestion} onClick={() => addMember(s)}>
+                    {s.firstName} {s.lastName}
+                  </div>
+                ))}
+              </div>
+            )}
+            {search.trim().length > 0 && suggestions.length === 0 && (
+              <div style={styles.suggestions}>
+                <div style={{ ...styles.suggestion, color: '#aaa', cursor: 'default' }}>Geen shoppers gevonden</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -316,111 +389,10 @@ function GroupCard({ group, shoppers, onDelete, onToggleMember }) {
 }
 
 // ---------------------------------------------------------------------------
-// NewShopperForm (modal)
+// EditGroupForm
 // ---------------------------------------------------------------------------
-function NewShopperForm({ orgId, createdBy, onSave, onClose }) {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!firstName.trim() || !lastName.trim()) {
-      setError('Vul voor- en achternaam in.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      // Generate a unique Firebase Auth-independent ID for the shopper
-      // We use a random document ID via addDoc through MemberFactory
-      const qrToken = generateQrToken();
-
-      // Create a Firestore document with a generated ID
-      const { doc, setDoc } = await import('firebase/firestore');
-      const { db } = await import('../../lib/firebase');
-      const { v4: uuidv4 } = await import('uuid').catch(() => ({
-        v4: () => Math.random().toString(36).slice(2) + Date.now().toString(36),
-      }));
-
-      const memberId = uuidv4();
-      const memberDocRef = doc(db, 'organizations', orgId, 'members', memberId);
-      await setDoc(memberDocRef, {
-        role: 'shopper',
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: '',
-        qrToken,
-        groupIds: [],
-        createdBy,
-        createdAt: new Date(),
-      });
-
-      onSave();
-    } catch (err) {
-      console.error('Failed to create shopper:', err);
-      setError('Aanmaken mislukt. Probeer opnieuw.');
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>Nieuwe shopper</h2>
-          <button style={styles.closeButton} onClick={onClose}>✕</button>
-        </div>
-
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.field}>
-            <label style={styles.label}>Voornaam</label>
-            <input
-              type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              style={styles.input}
-              placeholder="bijv. Marie"
-              required
-            />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Achternaam</label>
-            <input
-              type="text"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              style={styles.input}
-              placeholder="bijv. Janssen"
-              required
-            />
-          </div>
-
-          <p style={styles.formHint}>
-            Na het aanmaken kan je een QR-kaartje afdrukken voor deze shopper.
-          </p>
-
-          {error && <p style={styles.errorText}>{error}</p>}
-
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? 'Aanmaken...' : 'Aanmaken'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// NewGroupForm (modal)
-// ---------------------------------------------------------------------------
-function NewGroupForm({ orgId, onSave, onClose }) {
-  const [name, setName] = useState('');
+function EditGroupForm({ orgId, group, onSave, onClose }) {
+  const [name, setName] = useState(group.name || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -428,46 +400,29 @@ function NewGroupForm({ orgId, onSave, onClose }) {
     e.preventDefault();
     if (!name.trim()) { setError('Geef de groep een naam.'); return; }
     setSaving(true);
-    setError('');
     try {
-      await GroupFactory.create(orgId, { name: name.trim(), memberIds: [] });
+      await GroupFactory.update(orgId, group.id, { name: name.trim() });
       onSave();
-    } catch (err) {
-      console.error('Failed to create group:', err);
-      setError('Aanmaken mislukt. Probeer opnieuw.');
-      setSaving(false);
-    }
+    } catch { setError('Opslaan mislukt.'); setSaving(false); }
   }
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>Nieuwe groep</h2>
+          <h2 style={styles.modalTitle}>Groep bewerken</h2>
           <button style={styles.closeButton} onClick={onClose}>✕</button>
         </div>
-
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
             <label style={styles.label}>Naam van de groep</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={styles.input}
-              placeholder="bijv. Groep A"
-              required
-            />
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              style={styles.input} required autoFocus />
           </div>
-
           {error && <p style={styles.errorText}>{error}</p>}
-
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? 'Aanmaken...' : 'Aanmaken'}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
           </button>
         </form>
       </div>
@@ -476,7 +431,7 @@ function NewGroupForm({ orgId, onSave, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
-// EditShopperForm — naam van shopper wijzigen
+// EditShopperForm
 // ---------------------------------------------------------------------------
 function EditShopperForm({ orgId, shopper, onSave, onClose }) {
   const [firstName, setFirstName] = useState(shopper.firstName || '');
@@ -489,15 +444,9 @@ function EditShopperForm({ orgId, shopper, onSave, onClose }) {
     if (!firstName.trim() || !lastName.trim()) { setError('Vul voor- en achternaam in.'); return; }
     setSaving(true);
     try {
-      await MemberFactory.update(orgId, shopper.id, {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-      });
+      await MemberFactory.update(orgId, shopper.id, { firstName: firstName.trim(), lastName: lastName.trim() });
       onSave();
-    } catch (err) {
-      setError('Opslaan mislukt. Probeer opnieuw.');
-      setSaving(false);
-    }
+    } catch { setError('Opslaan mislukt.'); setSaving(false); }
   }
 
   return (
@@ -530,198 +479,12 @@ function EditShopperForm({ orgId, shopper, onSave, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
-// GuidesSection — begeleidersbeheer voor org_admin
-// ---------------------------------------------------------------------------
-function GuidesSection({ orgId, createdBy }) {
-  const [guides, setGuides] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingGuide, setEditingGuide] = useState(null);
-
-  useEffect(() => { loadGuides(); }, [orgId]);
-
-  async function loadGuides() {
-    setLoading(true);
-    try {
-      const snap = await MemberFactory.getByRole(orgId, 'guide');
-      const snapAdmin = await MemberFactory.getByRole(orgId, 'org_admin');
-      const all = [
-        ...snap.docs.map(d => ({ id: d.id, ...d.data() })),
-        ...snapAdmin.docs.map(d => ({ id: d.id, ...d.data() })),
-      ].sort((a, b) => a.firstName.localeCompare(b.firstName));
-      setGuides(all);
-    } finally { setLoading(false); }
-  }
-
-  async function handleDelete(guide) {
-    if (!confirm(`Begeleider "${guide.firstName} ${guide.lastName}" verwijderen?`)) return;
-    await MemberFactory.delete(orgId, guide.id);
-    setGuides(prev => prev.filter(g => g.id !== guide.id));
-  }
-
-  const ROLE_LABEL = { guide: 'Begeleider', org_admin: 'Org. beheerder' };
-
-  return (
-    <div style={styles.section}>
-      <div style={styles.sectionHeader}>
-        <p style={styles.sectionTitle}>Begeleiders</p>
-        <button style={styles.sectionAddButton} onClick={() => setShowForm(true)}>+ Toevoegen</button>
-      </div>
-      {loading ? <p style={styles.emptyHint}>Laden...</p> : guides.length === 0 ? (
-        <p style={styles.emptyHint}>Nog geen begeleiders.</p>
-      ) : (
-        <div style={styles.cardList}>
-          {guides.map(guide => (
-            <div key={guide.id} style={styles.card}>
-              <div style={styles.cardAvatar}>{guide.firstName?.[0]?.toUpperCase() || '?'}</div>
-              <div style={styles.cardBody}>
-                <p style={styles.cardName}>{guide.firstName} {guide.lastName}</p>
-                <p style={styles.cardSub}>{guide.email} · {ROLE_LABEL[guide.role] || guide.role}</p>
-              </div>
-              <div style={styles.cardActions}>
-                <button style={styles.editSmallButton} onClick={() => setEditingGuide(guide)}>✏️</button>
-                <button style={styles.deleteSmallButton} onClick={() => handleDelete(guide)}>🗑</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {editingGuide && (
-        <EditGuideForm orgId={orgId} guide={editingGuide}
-          onSave={async () => { setEditingGuide(null); await loadGuides(); }}
-          onClose={() => setEditingGuide(null)} />
-      )}
-      {showForm && (
-        <NewGuideForm orgId={orgId} createdBy={createdBy}
-          onSave={async () => { setShowForm(false); await loadGuides(); }}
-          onClose={() => setShowForm(false)} />
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// NewGuideForm — begeleider toevoegen met uitnodigingsmail
-// ---------------------------------------------------------------------------
-function NewGuideForm({ orgId, createdBy, onSave, onClose }) {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState('guide');
-  const [sendInvite, setSendInvite] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [tempPassword, setTempPassword] = useState(null);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      setError('Vul alle velden in.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      const { auth } = await import('../../lib/firebase');
-      const { getAuth } = await import('firebase/auth');
-      const idToken = await getAuth(auth.app).currentUser?.getIdToken();
-      const res = await fetch('/api/org/invite-guide', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify({ orgId, firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), role, sendInvite }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); setSaving(false); return; }
-      if (data.tempPassword) {
-        setTempPassword(data.tempPassword);
-      } else {
-        onSave();
-      }
-    } catch (err) {
-      setError('Er is een fout opgetreden.');
-      setSaving(false);
-    }
-  }
-
-  // Toon tijdelijk wachtwoord als geen mail gestuurd
-  if (tempPassword) {
-    return (
-      <div style={styles.modalOverlay} onClick={onSave}>
-        <div style={styles.modal} onClick={e => e.stopPropagation()}>
-          <div style={styles.modalHeader}>
-            <h2 style={styles.modalTitle}>Begeleider aangemaakt</h2>
-          </div>
-          <p style={{ color: '#555', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Geef dit tijdelijk wachtwoord door aan <strong>{firstName}</strong>. De begeleider wordt gevraagd dit te wijzigen bij de eerste aanmelding.
-          </p>
-          <div style={{ backgroundColor: '#f5f5f5', borderRadius: '10px', padding: '1rem', textAlign: 'center', marginBottom: '1rem' }}>
-            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>E-mailadres</p>
-            <p style={{ margin: '0 0 1rem', fontWeight: '700' }}>{email}</p>
-            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>Tijdelijk wachtwoord</p>
-            <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: '900', letterSpacing: '0.1em', color: '#1a1a1a' }}>{tempPassword}</p>
-          </div>
-          <button style={styles.saveButton} onClick={onSave}>Sluiten</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modal} onClick={e => e.stopPropagation()}>
-        <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>Nieuwe begeleider</h2>
-          <button style={styles.closeButton} onClick={onClose}>✕</button>
-        </div>
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.field}>
-            <label style={styles.label}>Voornaam</label>
-            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} style={styles.input} placeholder="Marie" required />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Achternaam</label>
-            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} style={styles.input} placeholder="Janssen" required />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>E-mailadres</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={styles.input} placeholder="marie@organisatie.be" required />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Rol</label>
-            <select value={role} onChange={e => setRole(e.target.value)} style={styles.input}>
-              <option value="guide">Begeleider</option>
-              <option value="org_admin">Organisatiebeheerder</option>
-            </select>
-          </div>
-          {/* Uitnodigingsmail */}
-          <div style={{ backgroundColor: '#F3E5F5', borderRadius: '10px', padding: '0.875rem' }}>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)}
-                style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0, accentColor: '#6A1B9A' }} />
-              <div>
-                <p style={{ margin: '0 0 0.2rem', fontSize: '0.9rem', fontWeight: '700', color: '#6A1B9A' }}>Uitnodigingsmail sturen</p>
-                <p style={{ margin: 0, fontSize: '0.78rem', color: '#888', lineHeight: 1.4 }}>
-                  De begeleider ontvangt een mail met een tijdelijk wachtwoord en een link om aan te melden. Niet aangevinkt: het wachtwoord wordt hier getoond.
-                </p>
-              </div>
-            </label>
-          </div>
-          {error && <p style={styles.errorText}>{error}</p>}
-          <button type="submit" disabled={saving} style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Aanmaken...' : sendInvite ? 'Aanmaken & uitnodigen' : 'Aanmaken'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// EditGuideForm — naam van begeleider wijzigen door org_admin
+// EditGuideForm — naam + rol wijzigen (org_admin)
 // ---------------------------------------------------------------------------
 function EditGuideForm({ orgId, guide, onSave, onClose }) {
   const [firstName, setFirstName] = useState(guide.firstName || '');
   const [lastName, setLastName] = useState(guide.lastName || '');
+  const [role, setRole] = useState(guide.role || 'guide');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -729,19 +492,30 @@ function EditGuideForm({ orgId, guide, onSave, onClose }) {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim()) { setError('Vul voor- en achternaam in.'); return; }
     setSaving(true);
+    setError('');
     try {
       await MemberFactory.update(orgId, guide.id, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
+        role,
       });
+      // Update custom claims als rol veranderd is
+      if (role !== guide.role) {
+        const { getAuth } = await import('firebase/auth');
+        const { auth } = await import('../../lib/firebase');
+        const idToken = await getAuth(auth.app).currentUser?.getIdToken();
+        await fetch('/api/admin/update-member-role', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+          body: JSON.stringify({ uid: guide.id, role, orgId }),
+        });
+      }
       onSave();
     } catch (err) {
-      setError('Opslaan mislukt. Probeer opnieuw.');
+      setError('Opslaan mislukt: ' + err.message);
       setSaving(false);
     }
   }
-
-  const ROLE_LABEL = { guide: 'Begeleider', org_admin: 'Org. beheerder' };
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
@@ -763,16 +537,229 @@ function EditGuideForm({ orgId, guide, onSave, onClose }) {
           </div>
           <div style={styles.field}>
             <label style={styles.label}>Rol</label>
-            <input type="text" value={ROLE_LABEL[guide.role] || guide.role} disabled
+            <select value={role} onChange={e => setRole(e.target.value)} style={styles.input}>
+              <option value="guide">Begeleider</option>
+              <option value="org_admin">Organisatiebeheerder</option>
+            </select>
+            {role !== guide.role && (
+              <p style={{ fontSize: '0.8rem', color: '#E65100', margin: '0.25rem 0 0' }}>
+                ⚠️ Rolwijziging wordt onmiddellijk van kracht.
+              </p>
+            )}
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>E-mailadres</label>
+            <input type="text" value={guide.email || ''} disabled
               style={{ ...styles.input, backgroundColor: '#f5f5f5', color: '#aaa' }} />
-            <p style={{ fontSize: '0.775rem', color: '#aaa', margin: '0.2rem 0 0' }}>
-              Rol kan alleen gewijzigd worden door een platform-beheerder.
-            </p>
           </div>
           {error && <p style={styles.errorText}>{error}</p>}
           <button type="submit" disabled={saving}
             style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
             {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NewShopperForm
+// ---------------------------------------------------------------------------
+function NewShopperForm({ orgId, createdBy, onSave, onClose }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) { setError('Vul voor- en achternaam in.'); return; }
+    setSaving(true);
+    try {
+      const qrToken = generateQrToken();
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('../../lib/firebase');
+      const { v4: uuidv4 } = await import('uuid').catch(() => ({
+        v4: () => Math.random().toString(36).slice(2) + Date.now().toString(36),
+      }));
+      const memberId = uuidv4();
+      await setDoc(doc(db, 'organizations', orgId, 'members', memberId), {
+        role: 'shopper', firstName: firstName.trim(), lastName: lastName.trim(),
+        email: '', qrToken, groupIds: [], createdBy, createdAt: new Date(),
+      });
+      onSave();
+    } catch { setError('Aanmaken mislukt.'); setSaving(false); }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Nieuwe shopper</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Voornaam</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
+              style={styles.input} placeholder="bijv. Marie" required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Achternaam</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
+              style={styles.input} placeholder="bijv. Janssen" required />
+          </div>
+          <p style={styles.formHint}>Na het aanmaken kan je een QR-kaartje afdrukken voor deze shopper.</p>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Aanmaken...' : 'Aanmaken'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NewGroupForm
+// ---------------------------------------------------------------------------
+function NewGroupForm({ orgId, onSave, onClose }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) { setError('Geef de groep een naam.'); return; }
+    setSaving(true);
+    try {
+      await GroupFactory.create(orgId, { name: name.trim(), memberIds: [] });
+      onSave();
+    } catch { setError('Aanmaken mislukt.'); setSaving(false); }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Nieuwe groep</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Naam van de groep</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              style={styles.input} placeholder="bijv. Groep A" required autoFocus />
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Aanmaken...' : 'Aanmaken'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NewGuideForm — met uitnodigingsmail
+// ---------------------------------------------------------------------------
+function NewGuideForm({ orgId, createdBy, onSave, onClose }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('guide');
+  const [sendInvite, setSendInvite] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [tempPassword, setTempPassword] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) { setError('Vul alle velden in.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const { auth } = await import('../../lib/firebase');
+      const { getAuth } = await import('firebase/auth');
+      const idToken = await getAuth(auth.app).currentUser?.getIdToken();
+      const res = await fetch('/api/org/invite-guide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+        body: JSON.stringify({ orgId, firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), role, sendInvite }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message); setSaving(false); return; }
+      if (data.tempPassword) { setTempPassword(data.tempPassword); }
+      else { onSave(); }
+    } catch { setError('Er is een fout opgetreden.'); setSaving(false); }
+  }
+
+  if (tempPassword) {
+    return (
+      <div style={styles.modalOverlay} onClick={onSave}>
+        <div style={styles.modal} onClick={e => e.stopPropagation()}>
+          <div style={styles.modalHeader}><h2 style={styles.modalTitle}>Begeleider aangemaakt ✅</h2></div>
+          <p style={{ color: '#555', fontSize: '0.9rem', marginBottom: '1rem', lineHeight: 1.5 }}>
+            Geef dit tijdelijk wachtwoord door aan <strong>{firstName}</strong>.
+          </p>
+          <div style={{ backgroundColor: '#f5f5f5', borderRadius: '10px', padding: '1.25rem', textAlign: 'center', marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>E-mailadres</p>
+            <p style={{ margin: '0 0 1rem', fontWeight: '700' }}>{email}</p>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#888' }}>Tijdelijk wachtwoord</p>
+            <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: '900', letterSpacing: '0.1em' }}>{tempPassword}</p>
+          </div>
+          <button style={styles.saveButton} onClick={onSave}>Sluiten</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Nieuwe begeleider</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Voornaam</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} style={styles.input} required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Achternaam</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} style={styles.input} required />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>E-mailadres</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={styles.input} required />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Rol</label>
+            <select value={role} onChange={e => setRole(e.target.value)} style={styles.input}>
+              <option value="guide">Begeleider</option>
+              <option value="org_admin">Organisatiebeheerder</option>
+            </select>
+          </div>
+          <div style={{ backgroundColor: '#F3E5F5', borderRadius: '10px', padding: '0.875rem' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)}
+                style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: '#6A1B9A' }} />
+              <div>
+                <p style={{ margin: '0 0 0.2rem', fontSize: '0.9rem', fontWeight: '700', color: '#6A1B9A' }}>Uitnodigingsmail sturen</p>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#888', lineHeight: 1.4 }}>
+                  Begeleider ontvangt mail met tijdelijk wachtwoord. Niet aangevinkt: wachtwoord wordt hier getoond.
+                </p>
+              </div>
+            </label>
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving} style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Aanmaken...' : sendInvite ? 'Aanmaken & uitnodigen' : 'Aanmaken'}
           </button>
         </form>
       </div>
@@ -786,299 +773,48 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GroupsAndMembers);
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: {
-    minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-    fontFamily: 'system-ui, sans-serif',
-    padding: '1.5rem',
-    maxWidth: '600px',
-    margin: '0 auto',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '1.5rem',
-  },
-  backButton: {
-    background: 'none',
-    border: 'none',
-    fontSize: '0.9rem',
-    color: '#4CAF50',
-    cursor: 'pointer',
-    fontWeight: '600',
-    padding: '0.25rem 0',
-  },
-  title: {
-    fontSize: '1.2rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    margin: 0,
-  },
-  section: {
-    marginBottom: '2rem',
-  },
-  sectionHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '0.75rem',
-  },
-  sectionTitle: {
-    fontSize: '0.8rem',
-    fontWeight: '700',
-    color: '#aaa',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    margin: 0,
-  },
-  sectionAddButton: {
-    padding: '0.4rem 0.875rem',
-    backgroundColor: '#4CAF50',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '0.85rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  cardList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.6rem',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    border: '1.5px solid #eee',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.875rem',
-    padding: '0.75rem',
-  },
-  cardAvatar: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    backgroundColor: '#E8F5E9',
-    color: '#2E7D32',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '700',
-    fontSize: '1rem',
-    flexShrink: 0,
-  },
-  cardBody: {
-    flex: 1,
-  },
-  cardName: {
-    fontSize: '0.95rem',
-    fontWeight: '600',
-    color: '#1a1a1a',
-    margin: '0 0 0.15rem',
-  },
-  cardSub: {
-    fontSize: '0.8rem',
-    color: '#999',
-    margin: 0,
-  },
-  cardActions: {
-    display: 'flex',
-    gap: '0.4rem',
-    alignItems: 'center',
-  },
-  qrButton: {
-    padding: '0.35rem 0.7rem',
-    backgroundColor: '#E3F2FD',
-    color: '#1565C0',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.8rem',
-    fontWeight: '700',
-    cursor: 'pointer',
-  },
-  editSmallButton: {
-    padding: '0.35rem 0.5rem',
-    backgroundColor: '#E3F2FD',
-    color: '#1565C0',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-  },
-  deleteSmallButton: {
-    padding: '0.35rem 0.5rem',
-    backgroundColor: '#FFEBEE',
-    color: '#c62828',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-  },
-  groupCard: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    border: '1.5px solid #eee',
-    overflow: 'hidden',
-  },
-  groupCardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0.75rem',
-    cursor: 'pointer',
-  },
-  groupCardRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-  },
-  expandIcon: {
-    fontSize: '0.75rem',
-    color: '#aaa',
-  },
-  groupMemberList: {
-    borderTop: '1px solid #f0f0f0',
-    padding: '0.5rem 0.75rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-  },
-  groupMemberRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    padding: '0.5rem 0.6rem',
-    borderRadius: '8px',
-    cursor: 'pointer',
-  },
-  pickerName: {
-    flex: 1,
-    fontSize: '0.9rem',
-    fontWeight: '600',
-    color: '#1a1a1a',
-    margin: 0,
-  },
-  checkbox: {
-    width: '22px',
-    height: '22px',
-    borderRadius: '6px',
-    border: '2px solid',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  checkmark: {
-    fontSize: '0.75rem',
-    color: '#fff',
-    fontWeight: '700',
-  },
-  emptyHint: {
-    fontSize: '0.85rem',
-    color: '#bbb',
-    margin: '0.5rem 0',
-    padding: '0.75rem',
-    backgroundColor: '#fafafa',
-    borderRadius: '8px',
-    border: '1px dashed #eee',
-  },
-  centered: {
-    display: 'flex',
-    justifyContent: 'center',
-    paddingTop: '3rem',
-  },
-  hint: {
-    color: '#aaa',
-    fontSize: '0.95rem',
-    margin: 0,
-  },
-  // Modal
-  modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    display: 'flex',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    zIndex: 100,
-  },
-  modal: {
-    backgroundColor: '#fff',
-    borderRadius: '20px 20px 0 0',
-    padding: '1.5rem',
-    width: '100%',
-    maxWidth: '600px',
-    maxHeight: '92vh',
-    overflowY: 'auto',
-  },
-  modalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '1.25rem',
-  },
-  modalTitle: {
-    fontSize: '1.1rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    margin: 0,
-  },
-  closeButton: {
-    background: 'none',
-    border: 'none',
-    fontSize: '1.1rem',
-    color: '#aaa',
-    cursor: 'pointer',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-  },
-  label: {
-    fontSize: '0.875rem',
-    fontWeight: '600',
-    color: '#444',
-  },
-  input: {
-    padding: '0.75rem 1rem',
-    borderRadius: '10px',
-    border: '1.5px solid #ddd',
-    fontSize: '1rem',
-    backgroundColor: '#fff',
-  },
-  formHint: {
-    fontSize: '0.825rem',
-    color: '#aaa',
-    margin: 0,
-    padding: '0.6rem 0.8rem',
-    backgroundColor: '#fafafa',
-    borderRadius: '8px',
-  },
-  errorText: {
-    color: '#c62828',
-    fontSize: '0.875rem',
-    margin: 0,
-    padding: '0.6rem 0.8rem',
-    backgroundColor: '#FFEBEE',
-    borderRadius: '8px',
-  },
-  saveButton: {
-    padding: '0.875rem',
-    backgroundColor: '#4CAF50',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '10px',
-    fontSize: '1rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-    marginTop: '0.5rem',
-  },
+  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
+  backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#4CAF50', cursor: 'pointer', fontWeight: '600', padding: '0.25rem 0' },
+  title: { fontSize: '1.2rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
+  tabs: { display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '2px solid #eee' },
+  tab: { flex: 1, padding: '0.65rem 0.5rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', fontWeight: '600', color: '#aaa', cursor: 'pointer' },
+  tabActive: { color: '#1a1a1a', borderBottomColor: '#4CAF50' },
+  tabContent: { paddingTop: '0.25rem' },
+  sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' },
+  sectionTitle: { fontSize: '0.8rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 },
+  sectionAddButton: { padding: '0.4rem 0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' },
+  cardList: { display: 'flex', flexDirection: 'column', gap: '0.6rem' },
+  card: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.75rem' },
+  cardAvatar: { width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#E8F5E9', color: '#2E7D32', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '1rem', flexShrink: 0 },
+  cardBody: { flex: 1, minWidth: 0 },
+  cardName: { fontSize: '0.95rem', fontWeight: '600', color: '#1a1a1a', margin: '0 0 0.15rem' },
+  cardSub: { fontSize: '0.8rem', color: '#999', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  cardActions: { display: 'flex', gap: '0.35rem', alignItems: 'center' },
+  qrButton: { padding: '0.3rem 0.6rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' },
+  editSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
+  deleteSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
+  groupCard: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', overflow: 'hidden' },
+  groupCardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', cursor: 'pointer' },
+  expandIcon: { fontSize: '0.75rem', color: '#aaa', marginLeft: '0.25rem' },
+  groupMemberList: { borderTop: '1px solid #f0f0f0', padding: '0.75rem' },
+  tagContainer: { display: 'flex', flexWrap: 'wrap', gap: '0.4rem', minHeight: '28px' },
+  tag: { display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#E8F5E9', color: '#2E7D32', borderRadius: '20px', padding: '0.25rem 0.6rem 0.25rem 0.75rem', fontSize: '0.82rem', fontWeight: '600' },
+  tagRemove: { background: 'none', border: 'none', cursor: 'pointer', color: '#2E7D32', fontSize: '0.75rem', padding: '0', lineHeight: 1, opacity: 0.7 },
+  searchInput: { width: '100%', padding: '0.6rem 0.875rem', borderRadius: '8px', border: '1.5px solid #ddd', fontSize: '0.9rem', backgroundColor: '#fff', boxSizing: 'border-box' },
+  suggestions: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1.5px solid #ddd', borderTop: 'none', borderRadius: '0 0 8px 8px', zIndex: 10, maxHeight: '180px', overflowY: 'auto' },
+  suggestion: { padding: '0.6rem 0.875rem', cursor: 'pointer', fontSize: '0.9rem', color: '#1a1a1a' },
+  emptyHint: { fontSize: '0.85rem', color: '#bbb', margin: '0.5rem 0', padding: '0.75rem', backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #eee' },
+  modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
+  modal: { backgroundColor: '#fff', borderRadius: '20px 20px 0 0', padding: '1.5rem', width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto' },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
+  modalTitle: { fontSize: '1.1rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
+  closeButton: { background: 'none', border: 'none', fontSize: '1.1rem', color: '#aaa', cursor: 'pointer' },
+  form: { display: 'flex', flexDirection: 'column', gap: '1rem' },
+  field: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },
+  label: { fontSize: '0.875rem', fontWeight: '600', color: '#444' },
+  input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', backgroundColor: '#fff' },
+  formHint: { fontSize: '0.825rem', color: '#aaa', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fafafa', borderRadius: '8px' },
+  errorText: { color: '#c62828', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#FFEBEE', borderRadius: '8px' },
+  saveButton: { padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.5rem' },
 };
