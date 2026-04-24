@@ -7,7 +7,7 @@
  * - Verplicht wachtwoord wijzigen bij eerste aanmelding
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import {
   signIn,
@@ -38,21 +38,28 @@ export default function LoginPage() {
   const router = useRouter();
   const { user, loading } = useAuthUser();
   const [screen, setScreen] = useState(SCREEN.LOGIN);
+  const redirectingRef = React.useRef(false);
 
   // Redirect al ingelogde gebruikers
   useEffect(() => {
     if (loading || !user) return;
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
+
     getCurrentUserClaims().then(async (claims) => {
-      if (!claims) return;
+      if (!claims) { redirectingRef.current = false; return; }
       // Check of wachtwoord gewijzigd moet worden
-      const memberSnap = await MemberFactory.getById(claims.orgId, claims.uid).catch(() => null);
-      if (memberSnap?.exists() && memberSnap.data().mustChangePassword) {
-        setScreen(SCREEN.CHANGE_PASSWORD);
-        return;
+      if (claims.orgId) {
+        const memberSnap = await MemberFactory.getById(claims.orgId, claims.uid).catch(() => null);
+        if (memberSnap?.exists() && memberSnap.data().mustChangePassword) {
+          redirectingRef.current = false;
+          setScreen(SCREEN.CHANGE_PASSWORD);
+          return;
+        }
       }
       redirectByRole(claims.role, router);
-    });
-  }, [user, loading, router]);
+    }).catch(() => { redirectingRef.current = false; });
+  }, [user, loading]);
 
   if (loading) return <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>;
 
@@ -111,6 +118,8 @@ function LoginForm({ onForgot, onMustChange, router }) {
     setSubmitting(true);
     try {
       await signIn(email, password);
+      // Wacht even zodat de token met claims beschikbaar is
+      await new Promise(r => setTimeout(r, 500));
       const claims = await getCurrentUserClaims();
       if (!claims?.role) {
         setError('Je account heeft geen geldige rol.');
