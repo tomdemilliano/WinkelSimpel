@@ -1,11 +1,8 @@
 /**
  * public/sw.js — Winkel Simpel Service Worker
- *
- * Minimale service worker die de PWA installeerbaar maakt.
- * Cachet de app shell voor offline gebruik.
  */
 
-const CACHE_NAME = 'winkel-simpel-v1';
+const CACHE_NAME = 'winkel-simpel-v2';
 
 const APP_SHELL = [
   '/',
@@ -29,17 +26,15 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Network-first strategie: probeer netwerk, val terug op cache
 self.addEventListener('fetch', (event) => {
-  // Alleen GET requests cachen
   if (event.request.method !== 'GET') return;
-  // API routes niet cachen
   if (event.request.url.includes('/api/')) return;
+  // Nooit /scan of /shop cachen — die hebben altijd verse data nodig
+  if (event.request.url.includes('/scan') || event.request.url.includes('/shop')) return;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Sla succesvolle responses op in cache
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
