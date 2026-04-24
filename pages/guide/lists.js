@@ -331,7 +331,7 @@ function NewListForm({ orgId, claims, members, groups, onSave, onClose }) {
   );
 }
 
-export default withRoleGuard(ROLES.GUIDE, ShoppingLists);
+export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ShoppingLists);
 
 // ---------------------------------------------------------------------------
 // Styles
