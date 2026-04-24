@@ -69,7 +69,7 @@ function UsersPage({ claims }) {
     }
   }
 
-  const guides = members.filter((m) => m.role === 'guide');
+  const guides = members.filter((m) => m.role === 'guide' || m.role === 'org_admin');
   const shoppers = members.filter((m) => m.role === 'shopper');
   const admins = members.filter((m) => m.role === 'app_admin');
 
