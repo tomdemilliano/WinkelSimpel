@@ -302,32 +302,45 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
   const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
-  const memberIds = group.memberIds || [];
-  const members = shoppers.filter(s => memberIds.includes(s.id));
+  // Lokale kopie van memberIds zodat suggestions meteen bijwerken na toevoegen
+  const [localMemberIds, setLocalMemberIds] = useState(group.memberIds || []);
 
-  const suggestions = shoppers.filter(s =>
-    !memberIds.includes(s.id) &&
-    `${s.firstName} ${s.lastName}`.toLowerCase().includes(search.toLowerCase()) &&
-    search.trim().length > 0
-  );
+  // Sync als group prop verandert (na reload)
+  useEffect(() => {
+    setLocalMemberIds(group.memberIds || []);
+  }, [group.memberIds]);
+
+  const members = shoppers.filter(s => localMemberIds.includes(s.id));
+
+  const suggestions = search.trim().length > 0
+    ? shoppers.filter(s =>
+        !localMemberIds.includes(s.id) &&
+        `${s.firstName} ${s.lastName}`.toLowerCase().includes(search.toLowerCase().trim())
+      )
+    : [];
 
   async function addMember(shopper) {
+    const newIds = [...localMemberIds, shopper.id];
+    setLocalMemberIds(newIds); // meteen updaten voor responsieve UI
+    setSearch('');
     setSaving(true);
-    const newIds = [...memberIds, shopper.id];
     try {
       await GroupFactory.update(orgId, group.id, { memberIds: newIds });
-      group.memberIds = newIds;
-      setSearch('');
       await onReload();
+    } catch {
+      setLocalMemberIds(localMemberIds); // rollback bij fout
     } finally { setSaving(false); }
   }
 
   async function removeMember(shopperId) {
-    const newIds = memberIds.filter(id => id !== shopperId);
+    const newIds = localMemberIds.filter(id => id !== shopperId);
+    setLocalMemberIds(newIds);
     try {
       await GroupFactory.update(orgId, group.id, { memberIds: newIds });
       await onReload();
-    } catch { }
+    } catch {
+      setLocalMemberIds(localMemberIds);
+    }
   }
 
   return (
