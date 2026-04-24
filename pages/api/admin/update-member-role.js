@@ -51,9 +51,8 @@ export default async function handler(req, res) {
     if (!allowedRoles.includes(role)) return res.status(400).json({ message: 'Ongeldige rol.' });
 
     await adminAuth.setCustomUserClaims(uid, { role, orgId });
-
-    // Revoke refresh tokens zodat de nieuwe claims meteen actief zijn
-    await adminAuth.revokeRefreshTokens(uid);
+    // Geen revokeRefreshTokens — dat forceert de gebruiker uit te loggen
+    // De nieuwe claims worden actief bij de volgende token refresh (max 1 uur)
 
     return res.status(200).json({ success: true });
   } catch (err) {
