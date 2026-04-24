@@ -504,7 +504,7 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
   );
 }
 
-export default withRoleGuard(ROLES.GUIDE, ProductLibrary);
+export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ProductLibrary);
 
 // ---------------------------------------------------------------------------
 // Styles
