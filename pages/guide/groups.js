@@ -328,7 +328,7 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
       await GroupFactory.update(orgId, group.id, { memberIds: newIds });
       await onReload();
     } catch {
-      setLocalMemberIds(localMemberIds); // rollback bij fout
+      setLocalMemberIds(group.memberIds || []); // rollback bij fout
     } finally { setSaving(false); }
   }
 
@@ -339,7 +339,7 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
       await GroupFactory.update(orgId, group.id, { memberIds: newIds });
       await onReload();
     } catch {
-      setLocalMemberIds(localMemberIds);
+      setLocalMemberIds(group.memberIds || []);
     }
   }
 
@@ -348,7 +348,7 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
       <div style={styles.groupCardHeader} onClick={() => setExpanded(v => !v)}>
         <div>
           <p style={styles.cardName}>{group.name}</p>
-          <p style={styles.cardSub}>{memberIds.length} {memberIds.length === 1 ? 'lid' : 'leden'}</p>
+          <p style={styles.cardSub}>{localMemberIds.length} {localMemberIds.length === 1 ? 'lid' : 'leden'}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <button style={styles.editSmallButton} onClick={e => { e.stopPropagation(); onEdit(); }}>✏️</button>
