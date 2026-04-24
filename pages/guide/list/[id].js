@@ -581,7 +581,7 @@ function EditableTitle({ title, onSave }) {
   );
 }
 
-export default withRoleGuard(ROLES.GUIDE, ListDetail);
+export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ListDetail);
 
 // ---------------------------------------------------------------------------
 // Styles
