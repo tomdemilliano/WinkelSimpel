@@ -111,14 +111,14 @@ export default async function handler(req, res) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const roleLabel = role === 'org_admin' ? 'organisatiebeheerder' : 'begeleider';
 
-      await fetch('https://api.resend.com/emails', {
+      const resendRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: `Winkel Simpel <noreply@${new URL(appUrl).hostname}>`,
+          from: process.env.RESEND_FROM_EMAIL || `Winkel Simpel <noreply@${new URL(appUrl).hostname}>`,
           to: email,
           subject: `Welkom bij Winkel Simpel — jouw account is aangemaakt`,
           html: `
@@ -143,6 +143,11 @@ export default async function handler(req, res) {
           `,
         }),
       });
+      if (!resendRes.ok) {
+        const resendError = await resendRes.json().catch(() => ({}));
+        console.error('Resend fout:', JSON.stringify(resendError));
+        // Niet fataal — de gebruiker is aangemaakt, alleen de mail mislukte
+      }
     }
 
     return res.status(200).json({
