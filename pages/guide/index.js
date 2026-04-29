@@ -35,7 +35,7 @@ function GuideDashboard({ claims }) {
     },
     {
       icon: '👥',
-      label: 'Beheer Groepen & leden',
+      label: 'Groepen & leden',
       description: 'Shoppers en groepen beheren',
       href: '/guide/groups',
       color: '#FFF3E0',
