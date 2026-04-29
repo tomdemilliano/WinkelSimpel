@@ -34,6 +34,20 @@ organizations/{orgId}
       name: string
       imageUrl: string (Firebase Storage URL)
       unit: string (bijv. 'stuks', 'pak', 'fles')
+      storeId: string | null  (verwijst naar stores/{storeId})
+      createdBy: string (userId)
+      createdAt: timestamp
+
+  stores/{storeId}
+    Fields:
+      name: string
+      nameLower: string
+      type: 'chain' | 'store'
+      logoUrl: string
+      street: string | null
+      houseNumber: string | null
+      postalCode: string | null
+      city: string | null
       createdBy: string (userId)
       createdAt: timestamp
 
@@ -56,6 +70,32 @@ organizations/{orgId}
         quantity: number
         checked: boolean
         order: number (volgorde in het lijstje)
+
+stores/{storeId}
+  Fields:
+    name: string
+    nameLower: string
+    type: 'chain' | 'store'
+    logoUrl: string
+    street: string | null
+    houseNumber: string | null
+    postalCode: string | null
+    city: string | null
+    createdBy: string (userId)
+    createdAt: timestamp
+
+storeSubmissions/{id}
+  Fields:
+    name: string
+    nameLower: string
+    type: 'chain' | 'store'
+    logoUrl: string
+    orgId: string
+    orgStoreId: string
+    status: 'pending' | 'approved' | 'rejected'
+    centralStoreId: string | null
+    submittedAt: timestamp
+
 ```
 
 ## Firebase Storage structuur
