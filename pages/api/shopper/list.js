@@ -3,7 +3,7 @@
  *
  * Returns the items of a shopping list for a shopper.
  * Uses Admin SDK — bypasses Firestore rules entirely.
- * Validates the QR token to ensure the shopper has access.
+ * Validates either a member QR token or a group token.
  */
 
 import { initializeApp, getApps, getApp, cert } from 'firebase-admin/app';
@@ -43,22 +43,7 @@ export default async function handler(req, res) {
   try {
     const db = getFirestore(getAdminApp());
 
-    // Verify the QR token belongs to a shopper in this org
-    const membersSnap = await db
-      .collection('organizations').doc(orgId)
-      .collection('members')
-      .where('qrToken', '==', token)
-      .where('role', '==', 'shopper')
-      .limit(1)
-      .get();
-
-    if (membersSnap.empty) {
-      return res.status(403).json({ message: 'Ongeldige QR-code.' });
-    }
-
-    const member = { id: membersSnap.docs[0].id, ...membersSnap.docs[0].data() };
-
-    // Get the list
+    // Haal het lijstje op
     const listDoc = await db
       .collection('organizations').doc(orgId)
       .collection('shoppingLists').doc(listId)
@@ -70,12 +55,42 @@ export default async function handler(req, res) {
 
     const list = listDoc.data();
 
-    // Verify this list belongs to this member
-    if (list.assignedTo?.id !== member.id) {
-      return res.status(403).json({ message: 'Dit lijstje is niet voor jou.' });
+    // Valideer het token: ofwel individuele shopper QR-token, ofwel groepstoken op het lijstje
+    let memberInfo = { id: '', firstName: '', lastName: '' };
+    let tokenValid = false;
+
+    if (list.assignedTo?.type === 'member') {
+      // Individuele shopper — valideer via qrToken op het member document
+      const membersSnap = await db
+        .collection('organizations').doc(orgId)
+        .collection('members')
+        .where('qrToken', '==', token)
+        .where('role', '==', 'shopper')
+        .limit(1)
+        .get();
+
+      if (!membersSnap.empty) {
+        const member = membersSnap.docs[0].data();
+        const memberId = membersSnap.docs[0].id;
+        // Controleer of dit lijstje ook echt voor deze shopper is
+        if (list.assignedTo.id === memberId) {
+          tokenValid = true;
+          memberInfo = { id: memberId, firstName: member.firstName, lastName: member.lastName };
+        }
+      }
+    } else if (list.assignedTo?.type === 'group') {
+      // Groepslijstje — valideer via groupToken op het lijstje zelf
+      if (list.groupToken && list.groupToken === token) {
+        tokenValid = true;
+        memberInfo = { id: list.assignedTo.id, firstName: '', lastName: '' };
+      }
     }
 
-    // Get the items
+    if (!tokenValid) {
+      return res.status(403).json({ message: 'Ongeldige QR-code.' });
+    }
+
+    // Haal de items op
     const itemsSnap = await db
       .collection('organizations').doc(orgId)
       .collection('shoppingLists').doc(listId)
@@ -86,7 +101,7 @@ export default async function handler(req, res) {
     const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     return res.status(200).json({
-      member: { id: member.id, firstName: member.firstName, lastName: member.lastName },
+      member: memberInfo,
       list: { id: listDoc.id, title: list.title, status: list.status },
       items,
     });
