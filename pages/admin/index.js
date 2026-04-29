@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, OrganizationFactory as OrgFactory } from '../../lib/dbSchema';
+import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory } from '../../lib/dbSchema';
 
 function AdminDashboard({ claims }) {
   const router = useRouter();
@@ -39,10 +39,14 @@ function AdminDashboard({ claims }) {
         <button style={{ ...styles.tab, ...(tab === 'library' ? styles.tabActive : {}) }} onClick={() => setTab('library')}>
           Centrale bibliotheek
         </button>
+        <button style={{ ...styles.tab, ...(tab === 'stores' ? styles.tabActive : {}) }} onClick={() => setTab('stores')}>
+          Winkels
+        </button>
       </div>
 
       {tab === 'orgs' && <OrgsTab claims={claims} router={router} />}
       {tab === 'library' && <LibraryTab claims={claims} />}
+      {tab === 'stores' && <StoresTab claims={claims} />}
     </div>
   );
 }
@@ -216,6 +220,214 @@ function LibraryTab({ claims }) {
         </>
       )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StoresTab
+// ---------------------------------------------------------------------------
+function StoresTab({ claims }) {
+  const [pending, setPending] = useState([]);
+  const [central, setCentral] = useState([]);
+  const [orgs, setOrgs] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState('pending'); // 'pending' | 'approved'
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function loadAll() {
+    setLoading(true);
+    try {
+      const [pendingSnap, centralSnap, orgsSnap] = await Promise.all([
+        StoreSubmissionFactory.getPending(),
+        CentralStoreFactory.getAll(),
+        OrganizationFactory.getAll(),
+      ]);
+      setPending(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCentral(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const orgMap = {};
+      orgsSnap.docs.forEach(d => { orgMap[d.id] = d.data().name; });
+      setOrgs(orgMap);
+    } finally { setLoading(false); }
+  }
+
+  async function handleApprove(submission) {
+    try {
+      const ref = await CentralStoreFactory.create({
+        name: submission.name,
+        type: submission.type,
+        logoUrl: submission.logoUrl,
+        approvedBy: claims.uid,
+        sourceOrgId: submission.orgId,
+        sourceStoreId: submission.orgStoreId,
+      });
+      await StoreSubmissionFactory.approve(submission.id, ref.id);
+      setPending(prev => prev.filter(p => p.id !== submission.id));
+      setCentral(prev => [...prev, {
+        id: ref.id,
+        name: submission.name,
+        type: submission.type,
+        logoUrl: submission.logoUrl,
+      }].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      alert('Goedkeuren mislukt: ' + err.message);
+    }
+  }
+
+  async function handleReject(submission) {
+    if (!confirm(`"${submission.name}" weigeren?`)) return;
+    await StoreSubmissionFactory.reject(submission.id);
+    setPending(prev => prev.filter(p => p.id !== submission.id));
+  }
+
+  async function handleDeleteCentral(store) {
+    if (!confirm(`"${store.name}" uit de centrale bibliotheek verwijderen?`)) return;
+    await CentralStoreFactory.delete(store.id);
+    setCentral(prev => prev.filter(s => s.id !== store.id));
+  }
+
+  if (loading) return <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>;
+
+  return (
+    <>
+      {/* Sub-tabs */}
+      <div style={styles.subTabs}>
+        <button
+          style={{ ...styles.subTab, ...(section === 'pending' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('pending')}
+        >
+          Wachtrij {pending.length > 0 && <span style={styles.badge}>{pending.length}</span>}
+        </button>
+        <button
+          style={{ ...styles.subTab, ...(section === 'approved' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('approved')}
+        >
+          Centrale bibliotheek ({central.length})
+        </button>
+      </div>
+
+      {section === 'pending' && (
+        <>
+          {pending.length === 0 ? (
+            <div style={styles.centered}>
+              <p style={styles.hint}>Geen winkels in de wachtrij. ✅</p>
+            </div>
+          ) : (
+            <div style={styles.cardList}>
+              {pending.map(sub => (
+                <StoreSubmissionCard
+                  key={sub.id}
+                  submission={sub}
+                  orgName={orgs[sub.orgId] || sub.orgId}
+                  onApprove={() => handleApprove(sub)}
+                  onReject={() => handleReject(sub)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {section === 'approved' && (
+        <>
+          {central.length === 0 ? (
+            <div style={styles.centered}>
+              <p style={styles.hint}>Centrale winkelbibliotheek is leeg.</p>
+            </div>
+          ) : (
+            <div style={styles.cardList}>
+              {central.map(s => (
+                <CentralStoreCard
+                  key={s.id}
+                  store={s}
+                  onDelete={() => handleDeleteCentral(s)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StoreSubmissionCard
+// ---------------------------------------------------------------------------
+function StoreSubmissionCard({ submission, orgName, onApprove, onReject }) {
+  const isChain = submission.type === 'chain';
+  return (
+    <div style={styles.submissionCard}>
+      <div style={styles.submissionImage}>
+        {submission.logoUrl ? (
+          <img src={submission.logoUrl} alt={submission.name}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            onError={e => e.target.style.display = 'none'} />
+        ) : (
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M9 22V12h6v10" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </div>
+      <div style={styles.submissionBody}>
+        <p style={styles.submissionName}>{submission.name}</p>
+        <p style={styles.submissionMeta}>
+          <span style={{
+            fontSize: '0.72rem', fontWeight: '700',
+            color: isChain ? '#2E7D32' : '#1565C0',
+            backgroundColor: isChain ? '#E8F5E9' : '#E3F2FD',
+            padding: '0.1rem 0.4rem', borderRadius: '20px',
+          }}>
+            {isChain ? 'Keten' : 'Winkel'}
+          </span>
+          {' '}· ingediend door <strong>{orgName}</strong>
+        </p>
+      </div>
+      <div style={styles.submissionActions}>
+        <button style={styles.approveButton} onClick={onApprove}>✓ Goedkeuren</button>
+        <button style={styles.rejectButton} onClick={onReject}>✗ Weigeren</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CentralStoreCard
+// ---------------------------------------------------------------------------
+function CentralStoreCard({ store, onDelete }) {
+  const isChain = store.type === 'chain';
+  return (
+    <div style={styles.card}>
+      <div style={{
+        ...styles.cardAvatar,
+        borderRadius: '8px',
+        backgroundColor: '#f5f5f5',
+        overflow: 'hidden',
+      }}>
+        {store.logoUrl ? (
+          <img src={store.logoUrl} alt={store.name}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            onError={e => e.target.style.display = 'none'} />
+        ) : (
+          <span style={{ fontSize: '1.25rem' }}>🏪</span>
+        )}
+      </div>
+      <div style={styles.cardBody}>
+        <p style={styles.cardName}>{store.name}</p>
+        <p style={styles.cardSub}>
+          <span style={{
+            fontSize: '0.72rem', fontWeight: '700',
+            color: isChain ? '#2E7D32' : '#1565C0',
+            backgroundColor: isChain ? '#E8F5E9' : '#E3F2FD',
+            padding: '0.1rem 0.4rem', borderRadius: '20px',
+          }}>
+            {isChain ? 'Keten' : 'Winkel'}
+          </span>
+        </p>
+      </div>
+      <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+    </div>
   );
 }
 
