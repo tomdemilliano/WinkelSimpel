@@ -41,6 +41,15 @@ function GuideDashboard({ claims }) {
       color: '#FFF3E0',
       borderColor: '#FFCC80',
     },
+    {
+      icon: '🏪',
+      label: 'Winkels',
+      description: 'Winkels en ketens beheren',
+      href: '/guide/stores',
+      color: '#F3E5F5',
+      borderColor: '#CE93D8',
+    },
+    
   ];
 
   return (
