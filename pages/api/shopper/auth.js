@@ -1,7 +1,7 @@
 /**
  * pages/api/shopper/auth.js — Winkel Simpel
  *
- * Valideert QR token en geeft de actieve listId terug.
+ * Valideert QR token (individuele shopper of groepstoken) en geeft de actieve listId terug.
  * Geen Firebase Auth nodig — de QR token is de authenticatie.
  * Gebruikt Admin SDK — geen Firestore rules.
  */
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
   try {
     const db = getFirestore(getAdminApp());
 
-    // Stap 1: valideer QR token
+    // Stap 1a: probeer token als individuele shopper QR-token
     const membersSnap = await db
       .collection('organizations').doc(orgId)
       .collection('members')
@@ -52,33 +52,59 @@ export default async function handler(req, res) {
       .limit(1)
       .get();
 
-    if (membersSnap.empty) {
-      return res.status(403).json({ message: 'Ongeldige QR-code. Vraag een nieuwe aan je begeleider.' });
+    if (!membersSnap.empty) {
+      const member = { id: membersSnap.docs[0].id, ...membersSnap.docs[0].data() };
+
+      // Zoek actief lijstje voor deze shopper
+      const listsSnap = await db
+        .collection('organizations').doc(orgId)
+        .collection('shoppingLists')
+        .where('assignedTo.type', '==', 'member')
+        .where('assignedTo.id', '==', member.id)
+        .where('status', '==', 'active')
+        .limit(1)
+        .get();
+
+      const listId = listsSnap.empty ? null : listsSnap.docs[0].id;
+
+      return res.status(200).json({
+        success: true,
+        listId,
+        member: {
+          id: member.id,
+          firstName: member.firstName,
+          lastName: member.lastName,
+        },
+      });
     }
 
-    const member = { id: membersSnap.docs[0].id, ...membersSnap.docs[0].data() };
-
-    // Stap 2: zoek actief lijstje
-    const listsSnap = await db
+    // Stap 1b: probeer token als groepstoken op een actief lijstje
+    const groupListsSnap = await db
       .collection('organizations').doc(orgId)
       .collection('shoppingLists')
-      .where('assignedTo.type', '==', 'member')
-      .where('assignedTo.id', '==', member.id)
+      .where('groupToken', '==', token)
       .where('status', '==', 'active')
       .limit(1)
       .get();
 
-    const listId = listsSnap.empty ? null : listsSnap.docs[0].id;
+    if (!groupListsSnap.empty) {
+      const listDoc = groupListsSnap.docs[0];
+      const listData = listDoc.data();
 
-    return res.status(200).json({
-      success: true,
-      listId,
-      member: {
-        id: member.id,
-        firstName: member.firstName,
-        lastName: member.lastName,
-      },
-    });
+      return res.status(200).json({
+        success: true,
+        listId: listDoc.id,
+        // Groepslijstjes hebben geen individuele shopper — geef een generieke naam terug
+        member: {
+          id: listData.assignedTo.id,
+          firstName: '',
+          lastName: '',
+        },
+      });
+    }
+
+    return res.status(403).json({ message: 'Ongeldige QR-code. Vraag een nieuwe aan je begeleider.' });
+
   } catch (err) {
     console.error('shopper/auth error:', err.message);
     return res.status(500).json({ message: `Serverfout: ${err.message}` });
