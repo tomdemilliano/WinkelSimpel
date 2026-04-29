@@ -190,6 +190,11 @@ export default function ShopPageClient() {
               <p style={{ ...styles.overviewItemName, ...(item.checked ? styles.overviewItemNameDone : {}) }}>
                 {item.productName}
               </p>
+              {!item.checked && item.storeName && (
+                <p style={styles.overviewItemStore}>
+                  {item.storeType === 'chain' ? '🏪' : '📍'} {item.storeName}
+                </p>
+              )}
               {!item.checked && (
                 <p style={styles.overviewItemQty}>× {item.quantity}</p>
               )}
@@ -240,6 +245,21 @@ export default function ShopPageClient() {
       {/* Product info */}
       <div style={styles.productInfo}>
         <p style={styles.productName}>{currentItem.productName}</p>
+          {currentItem.storeName && (
+          <div style={styles.storeRow}>
+            {currentItem.storeLogoUrl ? (
+              <img src={currentItem.storeLogoUrl} alt={currentItem.storeName}
+                style={styles.storeLogoSmall}
+                onError={e => e.target.style.display = 'none'}
+                referrerPolicy="no-referrer" />
+            ) : (
+              <span style={{ fontSize: '0.9rem' }}>
+                {currentItem.storeType === 'chain' ? '🏪' : '📍'}
+              </span>
+            )}
+            <span style={styles.storeName}>{currentItem.storeName}</span>
+          </div>
+        )}
         <div style={styles.quantityBadge}>
           <span style={styles.quantityNumber}>{currentItem.quantity}</span>
           <span style={styles.quantityUnit}>{currentItem.quantity === 1 ? 'stuk' : 'stuks'}</span>
@@ -430,4 +450,9 @@ const styles = {
   completionMessage: { fontSize: '3rem', fontWeight: '900', color: '#fff', margin: 0, lineHeight: 1.1 },
   completionName: { fontSize: '2rem', fontWeight: '800', color: 'rgba(255,255,255,0.9)', margin: 0 },
   completionSub: { fontSize: '1.4rem', fontWeight: '600', color: 'rgba(255,255,255,0.85)', margin: 0 },
+
+  storeRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.4rem' },
+  storeLogoSmall: { width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' },
+  storeName: { fontSize: '0.9rem', color: '#888', fontWeight: '500' },
+  overviewItemStore: { fontSize: '0.72rem', color: '#888', margin: 0, fontWeight: '500' },
 };
