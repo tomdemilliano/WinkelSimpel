@@ -52,6 +52,9 @@ function ListDetail({ claims }) {
   const [saving, setSaving] = useState(false);
   const [assignedMemberToken, setAssignedMemberToken] = useState(null);
   const [stores, setStores] = useState({});
+  const [showReassignForm, setShowReassignForm] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [groups, setGroups] = useState([]);
 
   useEffect(() => {
     if (!listId) return;
@@ -82,6 +85,14 @@ function ListDetail({ claims }) {
       storesSnap.docs.forEach(d => { storeMap[d.id] = { id: d.id, ...d.data() }; });
       setStores(storeMap);
 
+      // Laad members en groups voor hertoewijzing
+      const [membersSnap, groupsSnap] = await Promise.all([
+        MemberFactory.getByRole(orgId, 'shopper'),
+        GroupFactory.getAll(orgId),
+      ]);
+      setMembers(membersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setGroups(groupsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      
       // Resolve assigned label
       if (listData.assignedTo?.type === 'member') {
         const memberSnap = await MemberFactory.getById(orgId, listData.assignedTo.id);
@@ -267,7 +278,14 @@ function ListDetail({ claims }) {
               setList(prev => ({ ...prev, title: newTitle }));
             }}
           />
-          <p style={styles.assignedLabel}>{assignedLabel}</p>
+          <button
+            style={styles.assignedLabelButton}
+            onClick={() => isEditable && setShowReassignForm(true)}
+            disabled={!isEditable}
+          >
+            <span style={styles.assignedLabel}>{assignedLabel || 'Niet toegewezen'}</span>
+            {isEditable && <span style={styles.assignedEditHint}>✏️</span>}
+          </button>
         </div>
         <StatusBadge status={list.status} />
       </div>
@@ -357,6 +375,21 @@ function ListDetail({ claims }) {
           existingProductIds={items.map((i) => i.productId)}
           onAdd={handleAddProducts}
           onClose={() => setShowProductPicker(false)}
+        />
+      )}
+      {/* Hertoewijzing modal */}
+      {showReassignForm && (
+        <ReassignForm
+          list={list}
+          members={members}
+          groups={groups}
+          onSave={async ({ assignedTo, newLabel }) => {
+            await ShoppingListFactory.update(orgId, listId, { assignedTo });
+            setList(prev => ({ ...prev, assignedTo }));
+            setAssignedLabel(newLabel);
+            setShowReassignForm(false);
+          }}
+          onClose={() => setShowReassignForm(false)}
         />
       )}
     </div>
@@ -546,6 +579,154 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
+// ReassignForm — hertoewijzen aan andere persoon of groep
+// ---------------------------------------------------------------------------
+function ReassignForm({ list, members, groups, onSave, onClose }) {
+  const [assignType, setAssignType] = useState(list.assignedTo?.type || 'member');
+  const [assignId, setAssignId] = useState(list.assignedTo?.id || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const assignOptions = assignType === 'member' ? members : groups;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!assignId) { setError('Kies een persoon of groep.'); return; }
+
+    setSaving(true);
+    setError('');
+    try {
+      const assignedTo = { type: assignType, id: assignId };
+
+      // Bereken het nieuwe label voor de header
+      let newLabel = '';
+      if (assignType === 'member') {
+        const member = members.find(m => m.id === assignId);
+        newLabel = member ? `${member.firstName} ${member.lastName}` : '';
+      } else {
+        const group = groups.find(g => g.id === assignId);
+        newLabel = group ? `Groep: ${group.name}` : '';
+      }
+
+      await onSave({ assignedTo, newLabel });
+    } catch (err) {
+      setError('Opslaan mislukt. Probeer opnieuw.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Toewijzen aan</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Type toggle */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label style={styles.hint}>Type</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                style={{
+                  flex: 1, padding: '0.6rem', borderRadius: '8px',
+                  border: '1.5px solid',
+                  borderColor: assignType === 'member' ? '#4CAF50' : '#ddd',
+                  backgroundColor: assignType === 'member' ? '#E8F5E9' : '#fff',
+                  fontSize: '0.9rem', fontWeight: '600',
+                  color: assignType === 'member' ? '#2E7D32' : '#666',
+                  cursor: 'pointer',
+                }}
+                onClick={() => { setAssignType('member'); setAssignId(''); }}
+              >
+                Persoon
+              </button>
+              <button
+                type="button"
+                style={{
+                  flex: 1, padding: '0.6rem', borderRadius: '8px',
+                  border: '1.5px solid',
+                  borderColor: assignType === 'group' ? '#4CAF50' : '#ddd',
+                  backgroundColor: assignType === 'group' ? '#E8F5E9' : '#fff',
+                  fontSize: '0.9rem', fontWeight: '600',
+                  color: assignType === 'group' ? '#2E7D32' : '#666',
+                  cursor: 'pointer',
+                }}
+                onClick={() => { setAssignType('group'); setAssignId(''); }}
+              >
+                Groep
+              </button>
+            </div>
+          </div>
+
+          {/* Dropdown */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label style={styles.hint}>
+              {assignType === 'member' ? 'Kies een shopper' : 'Kies een groep'}
+            </label>
+            {assignOptions.length === 0 ? (
+              <p style={{
+                fontSize: '0.85rem', color: '#aaa', margin: 0,
+                padding: '0.75rem', backgroundColor: '#fafafa',
+                borderRadius: '8px', border: '1px dashed #ddd',
+              }}>
+                {assignType === 'member'
+                  ? 'Geen shoppers gevonden.'
+                  : 'Geen groepen gevonden.'}
+              </p>
+            ) : (
+              <select
+                value={assignId}
+                onChange={e => setAssignId(e.target.value)}
+                style={{
+                  padding: '0.75rem 1rem', borderRadius: '10px',
+                  border: '1.5px solid #ddd', fontSize: '1rem',
+                  backgroundColor: '#fff', width: '100%',
+                }}
+                required
+              >
+                <option value="">— Kies —</option>
+                {assignOptions.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {assignType === 'member'
+                      ? `${item.firstName} ${item.lastName}`
+                      : item.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {error && (
+            <p style={{
+              color: '#c62828', fontSize: '0.875rem', margin: 0,
+              padding: '0.6rem 0.8rem', backgroundColor: '#FFEBEE', borderRadius: '8px',
+            }}>
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={saving}
+            style={{
+              padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff',
+              border: 'none', borderRadius: '10px', fontSize: '1rem',
+              fontWeight: '600', cursor: 'pointer', opacity: saving ? 0.7 : 1,
+              marginTop: '0.5rem',
+            }}
+          >
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // EditableTitle — inline bewerken van de lijstjenaam
 // ---------------------------------------------------------------------------
 function EditableTitle({ title, onSave }) {
@@ -644,11 +825,7 @@ const styles = {
     color: '#1a1a1a',
     margin: '0 0 0.2rem',
   },
-  assignedLabel: {
-    fontSize: '0.8rem',
-    color: '#888',
-    margin: 0,
-  },
+  assignedLabel: { fontSize: '0.8rem', color: '#888', margin: 0 },
   statusBadge: {
     fontSize: '0.75rem',
     fontWeight: '700',
@@ -991,4 +1168,11 @@ const styles = {
   itemStoreRow: { display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' },
   itemStoreLogo: { width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px' },
   itemStoreName: { fontSize: '0.75rem', color: '#888', fontWeight: '500' },
+  assignedLabelButton: {
+  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  gap: '0.3rem',
+  },
+  
+  assignedEditHint: { fontSize: '0.7rem', color: '#bbb' },
 };
