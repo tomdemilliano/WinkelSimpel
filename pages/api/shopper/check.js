@@ -3,6 +3,7 @@
  *
  * Marks an item as checked (or unchecked) for a shopper.
  * Also marks the list as completed if all items are checked.
+ * Validates either a member QR token or a group token on the list.
  * Uses Admin SDK — bypasses Firestore rules.
  */
 
@@ -43,7 +44,10 @@ export default async function handler(req, res) {
   try {
     const db = getFirestore(getAdminApp());
 
-    // Verify token
+    // Valideer het token: ofwel individuele shopper QR-token, ofwel groepstoken
+    let tokenValid = false;
+
+    // Probeer eerst als individuele shopper QR-token
     const membersSnap = await db
       .collection('organizations').doc(orgId)
       .collection('members')
@@ -52,7 +56,21 @@ export default async function handler(req, res) {
       .limit(1)
       .get();
 
-    if (membersSnap.empty) {
+    if (!membersSnap.empty) {
+      tokenValid = true;
+    } else {
+      // Probeer als groepstoken op het lijstje zelf
+      const listDoc = await db
+        .collection('organizations').doc(orgId)
+        .collection('shoppingLists').doc(listId)
+        .get();
+
+      if (listDoc.exists && listDoc.data().groupToken === token) {
+        tokenValid = true;
+      }
+    }
+
+    if (!tokenValid) {
       return res.status(403).json({ message: 'Ongeldige QR-code.' });
     }
 
