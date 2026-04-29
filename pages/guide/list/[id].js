@@ -33,6 +33,7 @@ import {
   ProductFactory,
   MemberFactory,
   GroupFactory,
+  StoreFactory,
 } from '../../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,7 @@ function ListDetail({ claims }) {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [assignedMemberToken, setAssignedMemberToken] = useState(null);
+  const [stores, setStores] = useState({});
 
   useEffect(() => {
     if (!listId) return;
@@ -71,7 +73,14 @@ function ListDetail({ claims }) {
 
       const listData = { id: listSnap.id, ...listSnap.data() };
       setList(listData);
-      setItems(itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const itemsData = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setItems(itemsData);
+      
+      // Laad winkels voor deze organisatie
+      const storesSnap = await StoreFactory.getAll(orgId);
+      const storeMap = {};
+      storesSnap.docs.forEach(d => { storeMap[d.id] = { id: d.id, ...d.data() }; });
+      setStores(storeMap);
 
       // Resolve assigned label
       if (listData.assignedTo?.type === 'member') {
@@ -106,11 +115,16 @@ function ListDetail({ claims }) {
 
     try {
       const newItems = await Promise.all(
-        selectedProducts.map((product, index) =>
-          ListItemFactory.create(orgId, listId, {
+        selectedProducts.map((product, index) => {
+          const store = product.storeId ? stores[product.storeId] : null;
+          return ListItemFactory.create(orgId, listId, {
             productId: product.id,
             productName: product.name,
             productImageUrl: product.imageUrl,
+            storeId: product.storeId || null,
+            storeName: store?.name || null,
+            storeType: store?.type || null,
+            storeLogoUrl: store?.logoUrl || null,
             quantity: 1,
             order: startOrder + index,
           }).then((ref) => ({
@@ -118,11 +132,15 @@ function ListDetail({ claims }) {
             productId: product.id,
             productName: product.name,
             productImageUrl: product.imageUrl,
+            storeId: product.storeId || null,
+            storeName: store?.name || null,
+            storeType: store?.type || null,
+            storeLogoUrl: store?.logoUrl || null,
             quantity: 1,
             order: startOrder + index,
             checked: false,
-          }))
-        )
+          }));
+        })
       );
       setItems((prev) => [...prev, ...newItems]);
     } catch (err) {
@@ -356,24 +374,33 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
         <ProductImage url={item.productImageUrl} alt={item.productName} style={styles.itemImage} />
       </div>
 
-      {/* Name */}
+      {/* Name + winkel */}
       <div style={styles.itemBody}>
         <p style={styles.itemName}>{item.productName}</p>
+        {item.storeName && (
+          <div style={styles.itemStoreRow}>
+            {item.storeLogoUrl ? (
+              <img src={item.storeLogoUrl} alt={item.storeName}
+                style={styles.itemStoreLogo}
+                onError={e => e.target.style.display = 'none'}
+                referrerPolicy="no-referrer" />
+            ) : (
+              <span style={{ fontSize: '0.75rem' }}>
+                {item.storeType === 'chain' ? '🏪' : '📍'}
+              </span>
+            )}
+            <span style={styles.itemStoreName}>{item.storeName}</span>
+          </div>
+        )}
         {item.checked && <p style={styles.itemChecked}>✓ Genomen</p>}
       </div>
 
       {/* Quantity */}
       {isEditable ? (
         <div style={styles.qtyControl}>
-          <button
-            style={styles.qtyButton}
-            onClick={() => onQuantityChange(item.quantity - 1)}
-          >−</button>
+          <button style={styles.qtyButton} onClick={() => onQuantityChange(item.quantity - 1)}>−</button>
           <span style={styles.qtyValue}>{item.quantity}</span>
-          <button
-            style={styles.qtyButton}
-            onClick={() => onQuantityChange(item.quantity + 1)}
-          >+</button>
+          <button style={styles.qtyButton} onClick={() => onQuantityChange(item.quantity + 1)}>+</button>
         </div>
       ) : (
         <span style={styles.qtyDisplay}>× {item.quantity}</span>
@@ -382,16 +409,10 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
       {/* Reorder & delete */}
       {isEditable && (
         <div style={styles.itemControls}>
-          <button
-            style={{ ...styles.moveButton, opacity: index === 0 ? 0.3 : 1 }}
-            onClick={onMoveUp}
-            disabled={index === 0}
-          >↑</button>
-          <button
-            style={{ ...styles.moveButton, opacity: index === total - 1 ? 0.3 : 1 }}
-            onClick={onMoveDown}
-            disabled={index === total - 1}
-          >↓</button>
+          <button style={{ ...styles.moveButton, opacity: index === 0 ? 0.3 : 1 }}
+            onClick={onMoveUp} disabled={index === 0}>↑</button>
+          <button style={{ ...styles.moveButton, opacity: index === total - 1 ? 0.3 : 1 }}
+            onClick={onMoveDown} disabled={index === total - 1}>↓</button>
           <button style={styles.removeButton} onClick={onRemove}>✕</button>
         </div>
       )}
@@ -967,4 +988,7 @@ const styles = {
     justifyContent: 'center',
     height: '100vh',
   },
+  itemStoreRow: { display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' },
+  itemStoreLogo: { width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px' },
+  itemStoreName: { fontSize: '0.75rem', color: '#888', fontWeight: '500' },
 };
