@@ -51,6 +51,7 @@ function ListDetail({ claims }) {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [assignedMemberToken, setAssignedMemberToken] = useState(null);
+  const [groupToken, setGroupToken] = useState(null);
   const [stores, setStores] = useState({});
   const [showReassignForm, setShowReassignForm] = useState(false);
   const [members, setMembers] = useState([]);
@@ -76,6 +77,7 @@ function ListDetail({ claims }) {
 
       const listData = { id: listSnap.id, ...listSnap.data() };
       setList(listData);
+      if (listData.groupToken) setGroupToken(listData.groupToken);
       const itemsData = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setItems(itemsData);
       
@@ -223,7 +225,13 @@ function ListDetail({ claims }) {
     }
     setSaving(true);
     try {
-      await ShoppingListFactory.update(orgId, listId, { status: 'active' });
+      if (list.assignedTo?.type === 'group') {
+        // Genereer een groepstoken via de activate methode
+        const token = await ShoppingListFactory.activate(orgId, listId);
+        setGroupToken(token);
+      } else {
+        await ShoppingListFactory.update(orgId, listId, { status: 'active' });
+      }
       setList((prev) => ({ ...prev, status: 'active' }));
     } catch (err) {
       console.error('Failed to activate list:', err);
@@ -340,24 +348,44 @@ function ListDetail({ claims }) {
       {isActive && (
         <div style={styles.actions}>
           <div style={styles.activeBanner}>
-            ✅ Dit lijstje is actief. De shopper kan het nu gebruiken.
+           ✅ Dit lijstje is actief. De shopper kan het nu gebruiken.
           </div>
+
+          {/* Individuele shopper */}
           {list.assignedTo?.type === 'member' && (
-            <button
-              style={styles.qrButton}
-              onClick={() => router.push(`/guide/qr/${list.assignedTo.id}`)}
-            >
-              📱 QR-kaartje tonen
-            </button>
+            <>
+              <button style={styles.qrButton} onClick={() => router.push(`/guide/qr/${list.assignedTo.id}`)}>
+                📱 QR-kaartje tonen
+              </button>
+              {assignedMemberToken && (
+                <button
+                  style={styles.shopperViewButton}
+                  onClick={() => window.open(buildDirectShopUrl(orgId, assignedMemberToken, list.id), '_blank')}
+                 >
+                  👁 Shopper-view openen
+                </button>
+              )}
+            </>
           )}
-          {assignedMemberToken && (
-            <button
-              style={styles.shopperViewButton}
-              onClick={() => window.open(buildDirectShopUrl(orgId, assignedMemberToken, list.id), '_blank')}
-            >
-              👁 Shopper-view openen
-            </button>
+
+          {/* Groep */}
+          {list.assignedTo?.type === 'group' && groupToken && (
+            <>
+              <button
+                style={styles.qrButton}
+                onClick={() => router.push(`/guide/qr-group/${list.id}`)}
+              >
+                📱 QR-kaartje tonen
+              </button>
+              <button
+                style={styles.shopperViewButton}
+                onClick={() => window.open(buildDirectShopUrl(orgId, groupToken, list.id), '_blank')}
+              >
+                👁 Groep-view openen
+              </button>
+            </>
           )}
+
           <button
             style={{ ...styles.deactivateButton, opacity: saving ? 0.7 : 1 }}
             onClick={handleDeactivate}
