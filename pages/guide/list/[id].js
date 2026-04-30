@@ -34,6 +34,7 @@ import {
   MemberFactory,
   GroupFactory,
   StoreFactory,
+  CategoryFactory,
 } from '../../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ function ListDetail({ claims }) {
   const [showReassignForm, setShowReassignForm] = useState(false);
   const [members, setMembers] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [categories, setCategories] = useState({});
 
   useEffect(() => {
     if (!listId) return;
@@ -87,13 +89,17 @@ function ListDetail({ claims }) {
       storesSnap.docs.forEach(d => { storeMap[d.id] = { id: d.id, ...d.data() }; });
       setStores(storeMap);
 
-      // Laad members en groups voor hertoewijzing
-      const [membersSnap, groupsSnap] = await Promise.all([
+      // Laad members, groups en categorieën
+      const [membersSnap, groupsSnap, catSnap] = await Promise.all([
         MemberFactory.getByRole(orgId, 'shopper'),
         GroupFactory.getAll(orgId),
+        CategoryFactory.getAll(orgId),
       ]);
       setMembers(membersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setGroups(groupsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const catMap = {};
+      catSnap.docs.forEach(d => { catMap[d.id] = { id: d.id, ...d.data() }; });
+      setCategories(catMap);
       
       // Resolve assigned label
       if (listData.assignedTo?.type === 'member') {
@@ -130,6 +136,7 @@ function ListDetail({ claims }) {
       const newItems = await Promise.all(
         selectedProducts.map((product, index) => {
           const store = product.storeId ? stores[product.storeId] : null;
+          const category = product.categoryId ? categories[product.categoryId] : null;
           return ListItemFactory.create(orgId, listId, {
             productId: product.id,
             productName: product.name,
@@ -138,6 +145,9 @@ function ListDetail({ claims }) {
             storeName: store?.name || null,
             storeType: store?.type || null,
             storeLogoUrl: store?.logoUrl || null,
+            categoryId: product.categoryId || null,
+            categoryName: category?.name || null,
+            categoryIconUrl: category?.iconUrl || null,
             quantity: 1,
             order: startOrder + index,
           }).then((ref) => ({
@@ -149,6 +159,9 @@ function ListDetail({ claims }) {
             storeName: store?.name || null,
             storeType: store?.type || null,
             storeLogoUrl: store?.logoUrl || null,
+            categoryId: product.categoryId || null,
+            categoryName: category?.name || null,
+            categoryIconUrl: category?.iconUrl || null,
             quantity: 1,
             order: startOrder + index,
             checked: false,
@@ -435,7 +448,7 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
         <ProductImage url={item.productImageUrl} alt={item.productName} style={styles.itemImage} />
       </div>
 
-      {/* Name + winkel */}
+      {/* Name + winkel + categorie */}
       <div style={styles.itemBody}>
         <p style={styles.itemName}>{item.productName}</p>
         {item.storeName && (
@@ -451,6 +464,14 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
               </span>
             )}
             <span style={styles.itemStoreName}>{item.storeName}</span>
+          </div>
+        )}
+        {item.categoryName && (
+          <div style={styles.itemCategoryBadge}>
+            {item.categoryIconUrl && (
+              <img src={item.categoryIconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
+            )}
+            <span style={styles.itemCategoryLabel}>{item.categoryName}</span>
           </div>
         )}
         {item.checked && <p style={styles.itemChecked}>✓ Genomen</p>}
@@ -1196,6 +1217,9 @@ const styles = {
   itemStoreRow: { display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' },
   itemStoreLogo: { width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px' },
   itemStoreName: { fontSize: '0.75rem', color: '#888', fontWeight: '500' },
+  itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem', marginTop: '0.2rem' },
+  itemCategoryIcon: { width: '14px', height: '14px', objectFit: 'contain', flexShrink: 0 },
+  itemCategoryLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
   assignedLabelButton: {
   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
