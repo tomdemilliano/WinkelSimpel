@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory } from '../../lib/dbSchema';
+import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory, CategoryFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // ProductImage — toont afbeelding of standaard winkeltas icon
@@ -53,6 +53,7 @@ function ProductLibrary({ claims }) {
   const [editingProduct, setEditingProduct] = useState(null); // null = new product
   const [searchQuery, setSearchQuery] = useState('');
   const [centralProducts, setCentralProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
 
   // Load products on mount
   useEffect(() => {
@@ -62,12 +63,14 @@ function ProductLibrary({ claims }) {
   async function loadProducts() {
     setLoading(true);
     try {
-      const [orgSnap, centralSnap] = await Promise.all([
+      const [orgSnap, centralSnap, catSnap] = await Promise.all([
         ProductFactory.getAll(orgId),
         CentralProductFactory.getAll(),
+        CategoryFactory.getAll(orgId),
       ]);
       setProducts(orgSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'org' })));
       setCentralProducts(centralSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'central' })));
+      setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -165,6 +168,7 @@ function ProductLibrary({ claims }) {
             <ProductCard
               key={product.id}
               product={product}
+              category={categories.find(c => c.id === product.categoryId) || null}
               onEdit={() => handleEdit(product)}
               onDelete={() => handleDelete(product)}
             />
@@ -177,6 +181,7 @@ function ProductLibrary({ claims }) {
         <ProductForm
           orgId={orgId}
           product={editingProduct}
+          categories={categories}
           onSave={handleFormSave}
           onClose={handleFormClose}
           claims={claims}
@@ -189,7 +194,7 @@ function ProductLibrary({ claims }) {
 // ---------------------------------------------------------------------------
 // ProductCard
 // ---------------------------------------------------------------------------
-function ProductCard({ product, onEdit, onDelete }) {
+function ProductCard({ product, category, onEdit, onDelete }) {
   const isCentral = product._source === 'central';
   const hasOrgVersion = !!product._central;
   return (
@@ -205,6 +210,14 @@ function ProductCard({ product, onEdit, onDelete }) {
           )}
         </div>
         <p style={styles.cardUnit}>{product.unit}</p>
+        {category && (
+          <div style={styles.categoryBadge}>
+            {category.iconUrl && (
+              <img src={category.iconUrl} alt="" style={styles.categoryBadgeIcon} referrerPolicy="no-referrer" />
+            )}
+            <span style={styles.categoryBadgeLabel}>{category.name}</span>
+          </div>
+        )}
       </div>
       <div style={styles.cardActions}>
         {!isCentral && <button style={styles.editButton} onClick={onEdit}>Bewerken</button>}
@@ -218,11 +231,12 @@ function ProductCard({ product, onEdit, onDelete }) {
 // ---------------------------------------------------------------------------
 // ProductForm (modal)
 // ---------------------------------------------------------------------------
-function ProductForm({ orgId, product, onSave, onClose, claims }) {
+function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
   const isEditing = !!product;
 
   const [name, setName] = useState(product?.name || '');
   const [unit, setUnit] = useState(product?.unit || 'stuks');
+  const [categoryId, setCategoryId] = useState(product?.categoryId || '');
   const [imageFile, setImageFile] = useState(null);
   // imagePreview toont altijd de meest recente afbeelding (upload, import of bestaande URL)
   const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
@@ -323,40 +337,44 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
           imageUrl = importedImageUrl;
         }
 
-        await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl });
-        onSave({ id: product.id, name: name.trim(), unit, imageUrl });
+        await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl, categoryId: categoryId || null });
+        onSave({ id: product.id, name: name.trim(), unit, imageUrl, categoryId: categoryId || null });
       } else {
         // Create new product
+        const catId = categoryId || null;
         if (imageFile) {
           // Upload image if provided
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: '',
             unit,
+            categoryId: catId,
             createdBy: claims.uid,
           });
           const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
           await ProductFactory.update(orgId, docRef.id, { imageUrl });
           await submitToCentral(docRef.id, name.trim(), imageUrl, unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl, categoryId: catId });
         } else if (importedImageUrl?.trim()) {
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: importedImageUrl.trim(),
             unit,
+            categoryId: catId,
             createdBy: claims.uid,
           });
           await submitToCentral(docRef.id, name.trim(), importedImageUrl.trim(), unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim() });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim(), categoryId: catId });
         } else {
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: '',
             unit,
+            categoryId: catId,
             createdBy: claims.uid,
           });
           await submitToCentral(docRef.id, name.trim(), '', unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '' });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '', categoryId: catId });
         }
       }
     } catch (err) {
@@ -487,6 +505,27 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
               <option value="pot">pot</option>
               <option value="kg">kg</option>
             </select>
+          </div>
+
+          {/* Categorie */}
+          <div style={styles.field}>
+            <label style={styles.label}>Categorie (optioneel)</label>
+            {categories.length === 0 ? (
+              <p style={{ fontSize: '0.8rem', color: '#aaa', margin: 0 }}>
+                Nog geen categorieën aangemaakt. Ga naar <strong>Categorieën</strong> in het dashboard.
+              </p>
+            ) : (
+              <select
+                value={categoryId}
+                onChange={e => setCategoryId(e.target.value)}
+                style={styles.input}
+              >
+                <option value="">— Geen categorie —</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {error && <p style={styles.errorText}>{error}</p>}
@@ -791,5 +830,27 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     marginTop: '0.5rem',
+  },
+  categoryBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.3rem',
+    backgroundColor: '#FFF8E1',
+    border: '1px solid #FFE082',
+    borderRadius: '20px',
+    padding: '0.15rem 0.55rem',
+    marginTop: '0.3rem',
+  },
+  categoryBadgeIcon: {
+    width: '16px',
+    height: '16px',
+    objectFit: 'contain',
+    flexShrink: 0,
+  },
+  categoryBadgeLabel: {
+    fontSize: '0.72rem',
+    fontWeight: '600',
+    color: '#795548',
+    whiteSpace: 'nowrap',
   },
 };
