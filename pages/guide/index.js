@@ -49,12 +49,18 @@ function GuideDashboard({ claims }) {
       color: '#F3E5F5',
       borderColor: '#CE93D8',
     },
-    
+    {
+      icon: '🏷️',
+      label: 'Categorieën',
+      description: 'Productcategorieën en pictogrammen beheren',
+      href: '/guide/categories',
+      color: '#FFF8E1',
+      borderColor: '#FFE082',
+    },
   ];
 
   return (
     <div style={styles.page}>
-      {/* Header */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Winkel Simpel</h1>
@@ -65,7 +71,6 @@ function GuideDashboard({ claims }) {
         </button>
       </div>
 
-      {/* Navigation tiles */}
       <div style={styles.tileGrid}>
         {tiles.map((tile) => (
           <button
@@ -85,71 +90,15 @@ function GuideDashboard({ claims }) {
 
 export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GuideDashboard);
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 const styles = {
-  page: {
-    minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-    fontFamily: 'system-ui, sans-serif',
-    padding: '1.5rem',
-    maxWidth: '600px',
-    margin: '0 auto',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '2rem',
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    margin: '0 0 0.2rem',
-  },
-  subtitle: {
-    fontSize: '0.875rem',
-    color: '#888',
-    margin: 0,
-  },
-  signOutButton: {
-    padding: '0.5rem 1rem',
-    backgroundColor: 'transparent',
-    border: '1.5px solid #ddd',
-    borderRadius: '8px',
-    fontSize: '0.875rem',
-    color: '#666',
-    cursor: 'pointer',
-  },
-  tileGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  tile: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    padding: '1.25rem',
-    borderRadius: '14px',
-    border: '1.5px solid',
-    cursor: 'pointer',
-    textAlign: 'left',
-    gap: '0.3rem',
-  },
-  tileIcon: {
-    fontSize: '2rem',
-    marginBottom: '0.25rem',
-  },
-  tileLabel: {
-    fontSize: '1.1rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  tileDescription: {
-    fontSize: '0.875rem',
-    color: '#666',
-  },
+  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' },
+  title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.2rem' },
+  subtitle: { fontSize: '0.875rem', color: '#888', margin: 0 },
+  signOutButton: { padding: '0.5rem 1rem', backgroundColor: 'transparent', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.875rem', color: '#666', cursor: 'pointer' },
+  tileGrid: { display: 'flex', flexDirection: 'column', gap: '1rem' },
+  tile: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '1.25rem', borderRadius: '14px', border: '1.5px solid', cursor: 'pointer', textAlign: 'left', gap: '0.3rem' },
+  tileIcon: { fontSize: '2rem', marginBottom: '0.25rem' },
+  tileLabel: { fontSize: '1.1rem', fontWeight: '700', color: '#1a1a1a' },
+  tileDescription: { fontSize: '0.875rem', color: '#666' },
 };
