@@ -33,8 +33,6 @@ function ProductImage({ url, alt, style, placeholderSize = '1.75rem' }) {
       alt={alt || ''}
       style={style}
       onError={() => setFailed(true)}
-      referrerPolicy="no-referrer"
-      crossOrigin="anonymous"
     />
   );
 }
