@@ -63,7 +63,10 @@ function GuideDashboard({ claims }) {
     <div style={styles.page}>
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>Winkel Simpel</h1>
+          <div style={styles.titleRow}>
+            <h1 style={styles.title}>Winkel Simpel</h1>
+            <img src="/icons/icon-192.png" alt="" style={styles.logo} />
+          </div>
           <p style={styles.subtitle}>Begeleidersdashboard</p>
         </div>
         <button style={styles.signOutButton} onClick={handleSignOut}>
@@ -93,6 +96,8 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GuideDashboard);
 const styles = {
   page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' },
+  titleRow: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
+  logo: { width: '32px', height: '32px', borderRadius: '6px' },
   title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.2rem' },
   subtitle: { fontSize: '0.875rem', color: '#888', margin: 0 },
   signOutButton: { padding: '0.5rem 1rem', backgroundColor: 'transparent', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.875rem', color: '#666', cursor: 'pointer' },
