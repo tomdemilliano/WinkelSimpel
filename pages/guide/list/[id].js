@@ -25,7 +25,7 @@ function ProductImage({ url, alt, style }) {
       </div>
     );
   }
-  return <img src={url} alt={alt || ''} style={style} onError={() => setFailed(true)} referrerPolicy="no-referrer" />;
+  return <img src={url} alt={alt || ''} style={style} onError={() => setFailed(true)} />;
 }
 import {
   ShoppingListFactory,
