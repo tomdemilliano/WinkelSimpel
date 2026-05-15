@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { ListItemFactory } from '../lib/dbSchema';
 
 export default function ShopPageClient() {
   const router = useRouter();
@@ -91,6 +92,32 @@ export default function ShopPageClient() {
     }
   }
 
+  async function handleUncheck(indexToUncheck) {
+    if (marking) return;
+    const idx = indexToUncheck ?? currentIndex;
+    const item = items[idx];
+    if (!item || !item.checked) return;
+    const { orgId, listId, token } = sessionRef.current;
+
+    setMarking(true);
+    const prevItems = items;
+    const updated = items.map((i, n) => n === idx ? { ...i, checked: false } : i);
+    setItems(updated);
+    if (completed) { setCompleted(false); setCurrentIndex(idx); }
+
+    try {
+      await fetch('/api/shopper/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId, listId, itemId: item.id, token, checked: false }),
+      });
+    } catch {
+      setItems(prevItems);
+      if (completed) setCompleted(true);
+    }
+    setMarking(false);
+  }
+
   function goNext() {
     const next = items.findIndex((i, n) => n > currentIndex && !i.checked);
     if (next >= 0) setCurrentIndex(next);
@@ -116,6 +143,28 @@ export default function ShopPageClient() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
   }, [currentIndex, view]);
+
+  // Realtime sync met andere shoppers via Firestore onSnapshot
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    const { orgId, listId } = sessionRef.current;
+
+    const unsubscribe = ListItemFactory.subscribe(orgId, listId, (serverItems) => {
+      setItems(prev => {
+        let changed = false;
+        const merged = prev.map(item => {
+          const s = serverItems.find(x => x.id === item.id);
+          if (s && s.checked !== item.checked) { changed = true; return { ...item, checked: s.checked }; }
+          return item;
+        });
+        if (!changed) return prev;
+        if (merged.every(i => i.checked)) setTimeout(() => setCompleted(true), 400);
+        return merged;
+      });
+    });
+
+    return unsubscribe;
+  }, [phase]);
 
   if (phase === 'booting' || phase === 'loading') {
     return (
@@ -169,7 +218,7 @@ export default function ShopPageClient() {
             <div
               key={item.id}
               style={{ ...styles.overviewCard, ...(item.checked ? styles.overviewCardDone : {}) }}
-              onClick={() => !item.checked && handleTaken(idx)}
+              onClick={() => item.checked ? handleUncheck(idx) : handleTaken(idx)}
             >
               {/* Afbeelding */}
               <div style={styles.overviewImageWrapper}>
@@ -310,10 +359,10 @@ export default function ShopPageClient() {
           <span>Leg in mandje</span>
         </button>
       ) : (
-        <div style={styles.alreadyTakenBadge}>
-          <CheckIcon size={28} color="#4CAF50" />
-          <span>In het mandje</span>
-        </div>
+        <button style={{ ...styles.uncheckButton, opacity: marking ? 0.7 : 1 }} onClick={() => handleUncheck()} disabled={marking}>
+          <UndoIcon />
+          <span>Terugleggen</span>
+        </button>
       )}
 
       {/* Thumbnail strip — alleen ongenomen items */}
@@ -365,6 +414,15 @@ function CartIcon({ size = 24, color = '#4CAF50' }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="12" fill="#E8F5E9"/>
       <path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm10 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-9.8-3h11.4c.7 0 1.4-.4 1.7-1l3.4-6.2A1 1 0 0023 6H5.2L4.3 4H1v2h2l3.6 7.6L5.2 16c-.5.8.1 2 1.3 2H21v-2H7.4l.8-1z" fill={color}/>
+    </svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7v6h6"/>
+      <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
     </svg>
   );
 }
@@ -441,7 +499,7 @@ const styles = {
 
   // Action button
   takenButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '18px', fontSize: '1.3rem', fontWeight: '800', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', transition: 'transform 0.15s, opacity 0.15s', boxShadow: '0 4px 16px rgba(76,175,80,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' },
-  alreadyTakenBadge: { margin: '0 1rem 0.5rem', padding: '1rem', backgroundColor: '#E8F5E9', color: '#4CAF50', borderRadius: '18px', fontSize: '1.2rem', fontWeight: '800', textAlign: 'center', flexShrink: 0, width: 'calc(100% - 2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' },
+  uncheckButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#fff', color: '#888', border: '2px solid #ddd', borderRadius: '18px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' },
 
   // Thumbnail strip
   stripWrapper: { flexShrink: 0, width: '100%', paddingBottom: '0.75rem' },
