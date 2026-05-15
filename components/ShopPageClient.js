@@ -229,6 +229,11 @@ export default function ShopPageClient() {
                     <CartIcon size={36} color={item.checked ? '#aaa' : '#4CAF50'} />
                   </div>
                 )}
+                {!item.checked && item.categoryIconUrl && (
+                  <div style={styles.overviewCategoryIconOverlay}>
+                    <img src={item.categoryIconUrl} alt={item.categoryName || ''} style={styles.overviewCategoryIconOverlayImg} referrerPolicy="no-referrer" />
+                  </div>
+                )}
                 {item.checked && (
                   <div style={styles.overviewCheckedOverlay}>
                     <CheckIcon size={40} />
@@ -239,12 +244,6 @@ export default function ShopPageClient() {
               <p style={{ ...styles.overviewItemName, ...(item.checked ? styles.overviewItemNameDone : {}) }}>
                 {item.productName}
               </p>
-              {!item.checked && item.categoryIconUrl && (
-                <div style={styles.overviewCategoryRow}>
-                  <img src={item.categoryIconUrl} alt={item.categoryName || ''} style={styles.overviewCategoryIcon} referrerPolicy="no-referrer" />
-                  {item.categoryName && <span style={styles.overviewCategoryName}>{item.categoryName}</span>}
-                </div>
-              )}
               {!item.checked && item.storeName && (
                 <p style={styles.overviewItemStore}>
                   {item.storeType === 'chain' ? '🏪' : '📍'} {item.storeName}
@@ -290,27 +289,17 @@ export default function ShopPageClient() {
             </p>
           </div>
         )}
+        {currentItem.categoryIconUrl && (
+          <div style={styles.categoryIconOverlay}>
+            <img src={currentItem.categoryIconUrl} alt={currentItem.categoryName || ''} style={styles.categoryIconOverlayImg} referrerPolicy="no-referrer" />
+          </div>
+        )}
         {currentItem.checked && (
           <div style={styles.checkedOverlay}>
             <CheckIcon size={120} />
           </div>
         )}
       </div>
-
-      {/* Categoriepictogram + naam (detail view) */}
-      {currentItem.categoryIconUrl && (
-        <div style={styles.categoryRow}>
-          <img
-            src={currentItem.categoryIconUrl}
-            alt={currentItem.categoryName || ''}
-            style={styles.categoryIcon}
-            referrerPolicy="no-referrer"
-          />
-          {currentItem.categoryName && (
-            <span style={styles.categoryName}>{currentItem.categoryName}</span>
-          )}
-        </div>
-      )}
 
       {/* Product info */}
       <div style={styles.productInfo}>
@@ -535,13 +524,11 @@ const styles = {
   storeName: { fontSize: '0.9rem', color: '#888', fontWeight: '500' },
   overviewItemStore: { fontSize: '0.72rem', color: '#888', margin: 0, fontWeight: '500' },
 
-  // Categorie — detail view
-  categoryRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.25rem 0.75rem 0', flexShrink: 0 },
-  categoryIcon: { width: '52px', height: '52px', objectFit: 'contain', flexShrink: 0 },
-  categoryName: { fontSize: '0.82rem', color: '#aaa', fontWeight: '500', letterSpacing: '0.02em' },
+  // Categorie overlay — detail view (rechts boven in afbeelding)
+  categoryIconOverlay: { position: 'absolute', top: '10px', right: '10px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '10px', padding: '5px', boxShadow: '0 1px 5px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  categoryIconOverlayImg: { width: '44px', height: '44px', objectFit: 'contain', display: 'block' },
 
-  // Categorie — overzichtsview
-  overviewCategoryRow: { display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center', marginBottom: '0.15rem' },
-  overviewCategoryIcon: { width: '22px', height: '22px', objectFit: 'contain', flexShrink: 0 },
-  overviewCategoryName: { fontSize: '0.65rem', color: '#aaa', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' },
+  // Categorie overlay — overzichtsview (rechts boven in kaartafbeelding)
+  overviewCategoryIconOverlay: { position: 'absolute', top: '4px', right: '4px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '6px', padding: '3px', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  overviewCategoryIconOverlayImg: { width: '22px', height: '22px', objectFit: 'contain', display: 'block' },
 };
