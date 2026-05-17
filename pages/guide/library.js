@@ -313,8 +313,16 @@ function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
   async function submitToCentral(orgProductId, name, imageUrl, unit) {
     // Niet indienen als het al in de centrale library staat
     if (centralMatch) return;
+    const selectedCategory = categories.find(c => c.id === categoryId) || null;
     try {
-      await ProductSubmissionFactory.create({ name, imageUrl, unit, orgId, orgProductId });
+      await ProductSubmissionFactory.create({
+        name, imageUrl, unit, orgId, orgProductId,
+        orgCategoryId: categoryId || null,
+        orgCategoryName: selectedCategory?.name || null,
+        orgCategoryIconUrl: selectedCategory?.iconUrl || null,
+        orgCategoryColor: selectedCategory?.color || null,
+        orgCategoryCentralId: selectedCategory?.centralCategoryId || null,
+      });
     } catch (err) {
       console.error('Submission to central failed:', err.message, err);
     }

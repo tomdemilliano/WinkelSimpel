@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, ProductFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory } from '../../lib/dbSchema';
+import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, ProductFactory, CentralCategoryFactory, CategoryFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory } from '../../lib/dbSchema';
 
 function AdminDashboard({ claims }) {
   const router = useRouter();
@@ -118,24 +118,27 @@ function OrgsTab({ claims, router }) {
 function LibraryTab({ claims }) {
   const [pending, setPending] = useState([]);
   const [central, setCentral] = useState([]);
+  const [centralCategories, setCentralCategories] = useState([]);
   const [orgs, setOrgs] = useState({});
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState('pending'); // 'pending' | 'approved'
+  const [section, setSection] = useState('pending'); // 'pending' | 'approved' | 'categories'
 
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
     setLoading(true);
     try {
-      const [pendingSnap, centralSnap, orgsSnap] = await Promise.all([
+      const [pendingSnap, centralSnap, centralCatSnap, orgsSnap] = await Promise.all([
         ProductSubmissionFactory.getPending(),
         CentralProductFactory.getAll(),
+        CentralCategoryFactory.getAll(),
         OrganizationFactory.getAll(),
       ]);
       const pendingItems = pendingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.submittedAt?.seconds || 0) - (b.submittedAt?.seconds || 0));
       setPending(pendingItems);
       setCentral(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCentralCategories(centralCatSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       const orgMap = {};
       orgsSnap.docs.forEach(d => { orgMap[d.id] = d.data().name; });
       setOrgs(orgMap);
@@ -145,8 +148,33 @@ function LibraryTab({ claims }) {
     } finally { setLoading(false); }
   }
 
-  async function handleApprove(submission) {
+  async function handleApprove(submission, categoryDecision) {
     try {
+      // Verwerk categorie-beslissing
+      let centralCategoryId = null;
+      if (categoryDecision === '__create__' && submission.orgCategoryId) {
+        const catRef = await CentralCategoryFactory.create({
+          name: submission.orgCategoryName,
+          iconUrl: submission.orgCategoryIconUrl || '',
+          color: submission.orgCategoryColor || '#4CAF50',
+          approvedBy: claims.uid,
+          sourceOrgId: submission.orgId,
+          sourceCategoryId: submission.orgCategoryId,
+        });
+        centralCategoryId = catRef.id;
+        setCentralCategories(prev => [...prev, {
+          id: catRef.id,
+          name: submission.orgCategoryName,
+          iconUrl: submission.orgCategoryIconUrl || '',
+          color: submission.orgCategoryColor || '#4CAF50',
+        }].sort((a, b) => a.name.localeCompare(b.name)));
+        // Koppel org-categorie aan centrale categorie (non-blocking)
+        CategoryFactory.update(submission.orgId, submission.orgCategoryId, { centralCategoryId: catRef.id })
+          .catch(err => console.warn('Could not link org category:', err.message));
+      } else if (categoryDecision && categoryDecision !== '__none__') {
+        centralCategoryId = categoryDecision;
+      }
+
       // Maak centraal product aan
       const ref = await CentralProductFactory.create({
         name: submission.name,
@@ -155,19 +183,27 @@ function LibraryTab({ claims }) {
         approvedBy: claims.uid,
         sourceOrgId: submission.orgId,
         sourceProductId: submission.orgProductId,
+        centralCategoryId,
       });
       // Update submission status
       await ProductSubmissionFactory.approve(submission.id, ref.id);
-      // Koppel het originele org-product aan het centrale product zodat het niet dubbel verschijnt
-      // Non-blocking: kan falen als security rules admins geen schrijfrecht geven op org-producten
+      // Koppel het originele org-product aan het centrale product (non-blocking)
       ProductFactory.update(submission.orgId, submission.orgProductId, { centralProductId: ref.id })
         .catch(err => console.warn('Could not link org product to central product:', err.message));
       setPending(prev => prev.filter(p => p.id !== submission.id));
-      setCentral(prev => [...prev, { id: ref.id, name: submission.name, imageUrl: submission.imageUrl, unit: submission.unit }]
-        .sort((a, b) => a.name.localeCompare(b.name)));
+      setCentral(prev => [...prev, {
+        id: ref.id, name: submission.name, imageUrl: submission.imageUrl,
+        unit: submission.unit, centralCategoryId,
+      }].sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       alert('Goedkeuren mislukt: ' + err.message);
     }
+  }
+
+  async function handleDeleteCentralCategory(category) {
+    if (!confirm(`Categorie "${category.name}" uit de centrale bibliotheek verwijderen?`)) return;
+    await CentralCategoryFactory.delete(category.id);
+    setCentralCategories(prev => prev.filter(c => c.id !== category.id));
   }
 
   async function handleReject(submission) {
@@ -194,7 +230,11 @@ function LibraryTab({ claims }) {
         </button>
         <button style={{ ...styles.subTab, ...(section === 'approved' ? styles.subTabActive : {}) }}
           onClick={() => setSection('approved')}>
-          Centrale bibliotheek ({central.length})
+          Producten ({central.length})
+        </button>
+        <button style={{ ...styles.subTab, ...(section === 'categories' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('categories')}>
+          Categorieën ({centralCategories.length})
         </button>
       </div>
 
@@ -207,7 +247,8 @@ function LibraryTab({ claims }) {
               {pending.map(sub => (
                 <SubmissionCard key={sub.id} submission={sub}
                   orgName={orgs[sub.orgId] || sub.orgId}
-                  onApprove={() => handleApprove(sub)}
+                  centralCategories={centralCategories}
+                  onApprove={(categoryDecision) => handleApprove(sub, categoryDecision)}
                   onReject={() => handleReject(sub)} />
               ))}
             </div>
@@ -222,7 +263,24 @@ function LibraryTab({ claims }) {
           ) : (
             <div style={styles.cardList}>
               {central.map(p => (
-                <CentralProductCard key={p.id} product={p} onDelete={() => handleDeleteCentral(p)} />
+                <CentralProductCard key={p.id} product={p}
+                  centralCategories={centralCategories}
+                  onDelete={() => handleDeleteCentral(p)} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {section === 'categories' && (
+        <>
+          {centralCategories.length === 0 ? (
+            <div style={styles.centered}><p style={styles.hint}>Nog geen centrale categorieën.</p></div>
+          ) : (
+            <div style={styles.cardList}>
+              {centralCategories.map(c => (
+                <CentralCategoryCard key={c.id} category={c}
+                  onDelete={() => handleDeleteCentralCategory(c)} />
               ))}
             </div>
           )}
@@ -448,27 +506,103 @@ function CentralStoreCard({ store, onDelete }) {
 // ---------------------------------------------------------------------------
 // SubmissionCard
 // ---------------------------------------------------------------------------
-function SubmissionCard({ submission, orgName, onApprove, onReject }) {
+function SubmissionCard({ submission, orgName, onApprove, onReject, centralCategories }) {
+  const hasCat = !!submission.orgCategoryId;
+  const catAlreadyCentral = !!submission.orgCategoryCentralId;
+
+  const [catAction, setCatAction] = useState(() => {
+    if (!hasCat) return 'none';
+    if (catAlreadyCentral) return 'existing_auto';
+    return 'new';
+  });
+  const [catSelectId, setCatSelectId] = useState(submission.orgCategoryCentralId || '');
+
+  function getResolvedCategoryDecision() {
+    if (!hasCat || catAction === 'none') return null;
+    if (catAction === 'existing_auto') return submission.orgCategoryCentralId;
+    if (catAction === 'new') return '__create__';
+    if (catAction === 'existing') return catSelectId || null;
+    return null;
+  }
+
   return (
-    <div style={styles.submissionCard}>
-      <div style={styles.submissionImage}>
-        {submission.imageUrl ? (
-          <img src={submission.imageUrl} alt={submission.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={e => e.target.style.display = 'none'} />
-        ) : (
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        )}
+    <div style={{ ...styles.submissionCard, flexDirection: 'column', alignItems: 'stretch', gap: '0.75rem' }}>
+      {/* Product info row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+        <div style={styles.submissionImage}>
+          {submission.imageUrl ? (
+            <img src={submission.imageUrl} alt={submission.name}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={e => e.target.style.display = 'none'} />
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={styles.submissionName}>{submission.name}</p>
+          <p style={styles.submissionMeta}>{submission.unit} · ingediend door <strong>{orgName}</strong></p>
+        </div>
       </div>
-      <div style={styles.submissionBody}>
-        <p style={styles.submissionName}>{submission.name}</p>
-        <p style={styles.submissionMeta}>{submission.unit} · ingediend door <strong>{orgName}</strong></p>
-      </div>
-      <div style={styles.submissionActions}>
-        <button style={styles.approveButton} onClick={onApprove}>✓ Goedkeuren</button>
+
+      {/* Category resolution */}
+      {hasCat && (
+        <div style={{ backgroundColor: '#fafafa', borderRadius: '8px', padding: '0.65rem 0.75rem', border: '1px solid #eee' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
+            {submission.orgCategoryIconUrl && (
+              <img src={submission.orgCategoryIconUrl} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }} referrerPolicy="no-referrer" />
+            )}
+            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#1a1a1a' }}>
+              {submission.orgCategoryName}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#aaa' }}>— categorie van de organisatie</span>
+          </div>
+
+          {catAlreadyCentral ? (
+            <p style={{ fontSize: '0.78rem', color: '#2E7D32', margin: 0, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              ✓ Categorie is al beschikbaar in de centrale bibliotheek
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <p style={{ fontSize: '0.75rem', color: '#888', margin: '0 0 0.2rem', fontWeight: '600' }}>
+                Categorie nog niet centraal — wat wil je doen?
+              </p>
+              <label style={styles.radioLabel}>
+                <input type="radio" name={`cat-${submission.id}`}
+                  checked={catAction === 'new'} onChange={() => setCatAction('new')} />
+                Toevoegen aan centrale bibliotheek
+              </label>
+              <label style={styles.radioLabel}>
+                <input type="radio" name={`cat-${submission.id}`}
+                  checked={catAction === 'existing'} onChange={() => setCatAction('existing')} />
+                Koppelen aan bestaande centrale categorie
+              </label>
+              {catAction === 'existing' && (
+                <select value={catSelectId} onChange={e => setCatSelectId(e.target.value)}
+                  style={{ fontSize: '0.82rem', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1.5px solid #ddd', marginLeft: '1.4rem', backgroundColor: '#fff' }}>
+                  <option value="">— Kies een categorie —</option>
+                  {centralCategories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+              <label style={styles.radioLabel}>
+                <input type="radio" name={`cat-${submission.id}`}
+                  checked={catAction === 'none'} onChange={() => setCatAction('none')} />
+                Geen centrale categorie toewijzen
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
         <button style={styles.rejectButton} onClick={onReject}>✗ Weigeren</button>
+        <button style={styles.approveButton} onClick={() => onApprove(getResolvedCategoryDecision())}>
+          ✓ Goedkeuren
+        </button>
       </div>
     </div>
   );
@@ -477,7 +611,8 @@ function SubmissionCard({ submission, orgName, onApprove, onReject }) {
 // ---------------------------------------------------------------------------
 // CentralProductCard
 // ---------------------------------------------------------------------------
-function CentralProductCard({ product, onDelete }) {
+function CentralProductCard({ product, onDelete, centralCategories }) {
+  const category = centralCategories?.find(c => c.id === product.centralCategoryId);
   return (
     <div style={styles.card}>
       <div style={{ ...styles.cardAvatar, borderRadius: '8px', backgroundColor: '#f5f5f5', overflow: 'hidden' }}>
@@ -492,6 +627,38 @@ function CentralProductCard({ product, onDelete }) {
       <div style={styles.cardBody}>
         <p style={styles.cardName}>{product.name}</p>
         <p style={styles.cardSub}>{product.unit}</p>
+        {category && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' }}>
+            {category.iconUrl && (
+              <img src={category.iconUrl} alt="" style={{ width: 14, height: 14, objectFit: 'contain' }} referrerPolicy="no-referrer" />
+            )}
+            <span style={{ fontSize: '0.72rem', color: '#888' }}>{category.name}</span>
+          </div>
+        )}
+      </div>
+      <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CentralCategoryCard
+// ---------------------------------------------------------------------------
+function CentralCategoryCard({ category, onDelete }) {
+  return (
+    <div style={styles.card}>
+      <div style={{ ...styles.cardAvatar, borderRadius: '8px', backgroundColor: category.color || '#E8F5E9', overflow: 'hidden' }}>
+        {category.iconUrl ? (
+          <img src={category.iconUrl} alt={category.name}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }}
+            onError={e => e.target.style.display = 'none'}
+            referrerPolicy="no-referrer" />
+        ) : (
+          <span style={{ fontSize: '1.25rem' }}>🏷️</span>
+        )}
+      </div>
+      <div style={styles.cardBody}>
+        <p style={styles.cardName}>{category.name}</p>
       </div>
       <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
     </div>
@@ -606,6 +773,7 @@ const styles = {
   submissionActions: { display: 'flex', flexDirection: 'column', gap: '0.35rem', flexShrink: 0 },
   approveButton: { padding: '0.35rem 0.65rem', backgroundColor: '#E8F5E9', color: '#2E7D32', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
   rejectButton: { padding: '0.35rem 0.65rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
+  radioLabel: { display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#444', cursor: 'pointer' },
   centered: { display: 'flex', justifyContent: 'center', paddingTop: '3rem' },
   hint: { color: '#aaa', fontSize: '0.95rem', margin: 0 },
   modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
