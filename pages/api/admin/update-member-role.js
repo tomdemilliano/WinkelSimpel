@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     const allowedRoles = ['guide', 'org_admin'];
     if (!allowedRoles.includes(role)) return res.status(400).json({ message: 'Ongeldige rol.' });
 
-    await adminAuth.setCustomUserClaims(uid, { role, orgId });
+    await adminAuth.setCustomUserClaims(uid, { role, orgId, orgType: 'organization' });
     // Geen revokeRefreshTokens — dat forceert de gebruiker uit te loggen
     // De nieuwe claims worden actief bij de volgende token refresh (max 1 uur)
 

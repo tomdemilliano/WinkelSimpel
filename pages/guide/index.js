@@ -57,6 +57,14 @@ function GuideDashboard({ claims }) {
       color: '#FFF8E1',
       borderColor: '#FFE082',
     },
+    ...(claims.orgType === 'private' ? [{
+      icon: '🏢',
+      label: 'Aansluiten bij organisatie',
+      description: 'Toegang aanvragen bij een organisatie',
+      href: '/guide/request-access',
+      color: '#E8EAF6',
+      borderColor: '#9FA8DA',
+    }] : []),
   ];
 
   return (

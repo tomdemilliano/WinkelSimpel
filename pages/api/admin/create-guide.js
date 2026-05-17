@@ -77,10 +77,10 @@ export default async function handler(req, res) {
       displayName: `${firstName} ${lastName}`,
     });
 
-    // Set custom claims: role and orgId
     await adminAuth.setCustomUserClaims(userRecord.uid, {
       role: 'guide',
       orgId,
+      orgType: 'organization',
     });
 
     // Create Firestore member document

@@ -14,6 +14,7 @@ organizations/{orgId}
     name: string
     createdAt: timestamp
     createdBy: string (userId)
+    isPrivate: boolean (true voor privé-organisaties aangemaakt via zelfregistratie)
 
   members/{userId}
     Fields:
@@ -157,6 +158,18 @@ storeSubmissions/{submissionId}
     centralStoreId: string | null (ingevuld na goedkeuring)
     submittedAt: timestamp
     reviewedAt: timestamp | null
+
+accessRequests/{requestId}
+  Fields:
+    requestingUserId: string (uid van de aanvrager)
+    requestingUserEmail: string
+    requestingUserName: string
+    targetOrgId: string (org waarvoor toegang aangevraagd wordt)
+    targetOrgName: string (snapshot)
+    status: 'pending' | 'approved' | 'rejected'
+    createdAt: timestamp
+    processedAt: timestamp | null
+    processedBy: string | null (uid van de verwerker)
 ```
 
 ---
@@ -200,8 +213,10 @@ Externe afbeeldingen (ARASAAC-pictogrammen, geïmporteerde productfoto's) worden
 ## Auth flow
 
 ### Guide / App admin / Org admin
-1. Login via e-mail + wachtwoord (`/login`)
-2. Firebase Auth → Custom Claims bevatten `{ role, orgId }`
+1. Login via e-mail + wachtwoord (`/login`) of zelfregistratie via `/register`
+2. Firebase Auth → Custom Claims bevatten `{ role, orgId, orgType }`
+   - `orgType: 'organization'` voor begeleiders binnen een organisatie
+   - `orgType: 'private'` voor stand-alone gebruikers (eenmansorganisatie)
 3. Redirect naar `/guide` of `/admin` op basis van rol
 
 ### Shopper
@@ -246,6 +261,7 @@ export const OrganizationFactory = {
 | `ProductSubmissionFactory` | `productSubmissions/` | Wachtrij voor productgoedkeuring |
 | `CentralStoreFactory` | `stores/` | Centrale winkelbibliotheek |
 | `StoreSubmissionFactory` | `storeSubmissions/` | Wachtrij voor winkelgoedkeuring |
+| `AccessRequestFactory` | `accessRequests/` | Toegangsverzoeken van stand-alone gebruikers |
 
 ---
 

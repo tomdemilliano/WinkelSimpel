@@ -96,7 +96,15 @@ export default function LoginPage() {
         )}
 
         {screen === SCREEN.LOGIN && (
-          <p style={styles.hint}>Ben je een shopper? Vraag je begeleider om de QR-code.</p>
+          <>
+            <p style={styles.hint}>Ben je een shopper? Vraag je begeleider om de QR-code.</p>
+            <p style={{ ...styles.hint, marginTop: '0.5rem' }}>
+              Nieuw hier?{' '}
+              <a href="/register" style={{ color: '#4CAF50', fontWeight: '600', textDecoration: 'none' }}>
+                Maak een account aan
+              </a>
+            </p>
+          </>
         )}
       </div>
     </div>

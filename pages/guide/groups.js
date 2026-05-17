@@ -7,13 +7,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { GroupFactory, MemberFactory } from '../../lib/dbSchema';
+import { GroupFactory, MemberFactory, AccessRequestFactory } from '../../lib/dbSchema';
 import { generateQrToken } from '../../lib/qr';
 
 function GroupsAndMembers({ claims }) {
   const router = useRouter();
-  const { orgId, uid, role } = claims;
+  const { orgId, uid, role, orgType } = claims;
   const isOrgAdmin = role === 'org_admin';
+  const isPrivate = orgType === 'private';
 
   const [tab, setTab] = useState('shoppers');
   const [groups, setGroups] = useState([]);
@@ -66,7 +67,32 @@ function GroupsAndMembers({ claims }) {
     { id: 'shoppers', label: 'Shoppers' },
     { id: 'groups', label: 'Groepen' },
     ...(isOrgAdmin ? [{ id: 'guides', label: 'Begeleiders' }] : []),
+    ...(isOrgAdmin ? [{ id: 'requests', label: 'Toegangsverzoeken' }] : []),
   ];
+
+  if (isPrivate) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.header}>
+          <button style={styles.backButton} onClick={() => router.push('/guide')}>← Terug</button>
+          <h1 style={styles.title}>Groepen & leden</h1>
+          <div style={{ width: 60 }} />
+        </div>
+        <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+          <p style={{ fontSize: '3rem', margin: '0 0 1rem' }}>👤</p>
+          <p style={{ color: '#666', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+            Als zelfstandig gebruiker heb je geen shoppers of groepen.
+          </p>
+          <button
+            style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E8EAF6', color: '#3949AB', border: 'none', borderRadius: '10px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}
+            onClick={() => router.push('/guide/request-access')}
+          >
+            Aansluiten bij een organisatie →
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.page}>
@@ -115,6 +141,11 @@ function GroupsAndMembers({ claims }) {
       {/* Begeleiders tab */}
       {tab === 'guides' && isOrgAdmin && (
         <GuidesTab orgId={orgId} uid={uid} />
+      )}
+
+      {/* Toegangsverzoeken tab */}
+      {tab === 'requests' && isOrgAdmin && (
+        <RequestsTab orgId={orgId} callerUid={uid} />
       )}
     </div>
   );
@@ -780,6 +811,118 @@ function NewGuideForm({ orgId, createdBy, onSave, onClose }) {
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RequestsTab — toegangsverzoeken voor org_admin
+// ---------------------------------------------------------------------------
+function RequestsTab({ orgId, callerUid }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => { loadRequests(); }, [orgId]);
+
+  async function loadRequests() {
+    setLoading(true);
+    try {
+      const snap = await AccessRequestFactory.getByOrg(orgId);
+      setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  }
+
+  async function handleAction(requestId, action) {
+    setActionError('');
+    try {
+      const { getAuth } = await import('firebase/auth');
+      const { auth } = await import('../../lib/firebase');
+      const idToken = await getAuth(auth.app).currentUser?.getIdToken();
+      const res = await fetch('/api/org/handle-access-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ requestId, action }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setActionError(data.message || 'Er is een fout opgetreden.');
+        return;
+      }
+      await loadRequests();
+    } catch {
+      setActionError('Er is een fout opgetreden. Probeer opnieuw.');
+    }
+  }
+
+  const pending = requests.filter((r) => r.status === 'pending');
+  const processed = requests.filter((r) => r.status !== 'pending');
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Openstaand ({pending.length})</p>
+      </div>
+      {actionError && (
+        <p style={{ ...styles.errorText, marginBottom: '0.75rem' }}>{actionError}</p>
+      )}
+      {loading ? (
+        <p style={styles.emptyHint}>Laden...</p>
+      ) : pending.length === 0 ? (
+        <p style={styles.emptyHint}>Geen openstaande verzoeken.</p>
+      ) : (
+        <div style={styles.cardList}>
+          {pending.map((r) => (
+            <div key={r.id} style={{ ...styles.card, flexDirection: 'column', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <div>
+                <p style={styles.cardName}>{r.requestingUserName}</p>
+                <p style={styles.cardSub}>{r.requestingUserEmail}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  style={{ padding: '0.4rem 0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' }}
+                  onClick={() => handleAction(r.id, 'approve')}
+                >
+                  Goedkeuren
+                </button>
+                <button
+                  style={{ padding: '0.4rem 0.875rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' }}
+                  onClick={() => handleAction(r.id, 'reject')}
+                >
+                  Weigeren
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {processed.length > 0 && (
+        <>
+          <div style={{ ...styles.sectionHeader, marginTop: '1.5rem' }}>
+            <p style={styles.sectionTitle}>Verwerkt</p>
+          </div>
+          <div style={styles.cardList}>
+            {processed.map((r) => (
+              <div key={r.id} style={styles.card}>
+                <div style={styles.cardBody}>
+                  <p style={styles.cardName}>{r.requestingUserName}</p>
+                  <p style={styles.cardSub}>{r.requestingUserEmail}</p>
+                </div>
+                <span style={{
+                  fontSize: '0.75rem', fontWeight: '600', padding: '0.3rem 0.7rem', borderRadius: '20px',
+                  ...(r.status === 'approved'
+                    ? { backgroundColor: '#E8F5E9', color: '#2E7D32' }
+                    : { backgroundColor: '#FFEBEE', color: '#C62828' }),
+                }}>
+                  {r.status === 'approved' ? 'Goedgekeurd' : 'Geweigerd'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

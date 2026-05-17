@@ -39,11 +39,12 @@ function ShoppingLists({ claims }) {
 
   async function loadAll() {
     setLoading(true);
+    const isPrivate = claims.orgType === 'private';
     try {
       const [listsSnap, membersSnap, groupsSnap] = await Promise.all([
         ShoppingListFactory.getAll(orgId),
-        MemberFactory.getByRole(orgId, 'shopper'),
-        GroupFactory.getAll(orgId),
+        isPrivate ? Promise.resolve({ docs: [] }) : MemberFactory.getByRole(orgId, 'shopper'),
+        isPrivate ? Promise.resolve({ docs: [] }) : GroupFactory.getAll(orgId),
       ]);
 
       setLists(
@@ -74,6 +75,7 @@ function ShoppingLists({ claims }) {
   function getAssignedLabel(assignedTo) {
     if (!assignedTo) return 'Niet toegewezen';
     if (assignedTo.type === 'member') {
+      if (claims.orgType === 'private' && assignedTo.id === claims.uid) return 'Jij';
       const member = members.find((m) => m.id === assignedTo.id);
       return member ? `${member.firstName} ${member.lastName}` : 'Onbekend lid';
     }
@@ -214,8 +216,9 @@ function ListCard({ list, assignedLabel, onOpen, onDelete }) {
 // NewListForm (modal)
 // ---------------------------------------------------------------------------
 function NewListForm({ orgId, claims, members, groups, onSave, onClose }) {
+  const isPrivate = claims.orgType === 'private';
   const [title, setTitle] = useState('');
-  const [assignType, setAssignType] = useState('member'); // 'member' | 'group'
+  const [assignType, setAssignType] = useState('member');
   const [assignId, setAssignId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -225,14 +228,18 @@ function NewListForm({ orgId, claims, members, groups, onSave, onClose }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!title.trim()) { setError('Geef het lijstje een naam.'); return; }
-    if (!assignId) { setError('Wijs het lijstje toe aan een persoon of groep.'); return; }
+    if (!isPrivate && !assignId) { setError('Wijs het lijstje toe aan een persoon of groep.'); return; }
+
+    const assignedTo = isPrivate
+      ? { type: 'member', id: claims.uid }
+      : { type: assignType, id: assignId };
 
     setSaving(true);
     setError('');
     try {
       await ShoppingListFactory.create(orgId, {
         title: title.trim(),
-        assignedTo: { type: assignType, id: assignId },
+        assignedTo,
         createdBy: claims.uid,
       });
       onSave();
@@ -252,7 +259,6 @@ function NewListForm({ orgId, claims, members, groups, onSave, onClose }) {
         </div>
 
         <form onSubmit={handleSubmit} style={styles.form}>
-          {/* Title */}
           <div style={styles.field}>
             <label style={styles.label}>Naam van het lijstje</label>
             <input
@@ -265,56 +271,62 @@ function NewListForm({ orgId, claims, members, groups, onSave, onClose }) {
             />
           </div>
 
-          {/* Assign type toggle */}
-          <div style={styles.field}>
-            <label style={styles.label}>Toewijzen aan</label>
-            <div style={styles.toggleRow}>
-              <button
-                type="button"
-                style={{ ...styles.toggleButton, ...(assignType === 'member' ? styles.toggleActive : {}) }}
-                onClick={() => { setAssignType('member'); setAssignId(''); }}
-              >
-                Persoon
-              </button>
-              <button
-                type="button"
-                style={{ ...styles.toggleButton, ...(assignType === 'group' ? styles.toggleActive : {}) }}
-                onClick={() => { setAssignType('group'); setAssignId(''); }}
-              >
-                Groep
-              </button>
-            </div>
-          </div>
+          {isPrivate ? (
+            <p style={{ fontSize: '0.85rem', color: '#888', margin: 0 }}>
+              Dit lijstje wordt automatisch aan jou toegewezen.
+            </p>
+          ) : (
+            <>
+              <div style={styles.field}>
+                <label style={styles.label}>Toewijzen aan</label>
+                <div style={styles.toggleRow}>
+                  <button
+                    type="button"
+                    style={{ ...styles.toggleButton, ...(assignType === 'member' ? styles.toggleActive : {}) }}
+                    onClick={() => { setAssignType('member'); setAssignId(''); }}
+                  >
+                    Persoon
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...styles.toggleButton, ...(assignType === 'group' ? styles.toggleActive : {}) }}
+                    onClick={() => { setAssignType('group'); setAssignId(''); }}
+                  >
+                    Groep
+                  </button>
+                </div>
+              </div>
 
-          {/* Assign target */}
-          <div style={styles.field}>
-            <label style={styles.label}>
-              {assignType === 'member' ? 'Kies een shopper' : 'Kies een groep'}
-            </label>
-            {assignOptions.length === 0 ? (
-              <p style={styles.emptyHint}>
-                {assignType === 'member'
-                  ? 'Geen shoppers gevonden. Voeg eerst leden toe via Groepen & leden.'
-                  : 'Geen groepen gevonden. Maak eerst een groep aan.'}
-              </p>
-            ) : (
-              <select
-                value={assignId}
-                onChange={(e) => setAssignId(e.target.value)}
-                style={styles.input}
-                required
-              >
-                <option value="">— Kies —</option>
-                {assignOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
+              <div style={styles.field}>
+                <label style={styles.label}>
+                  {assignType === 'member' ? 'Kies een shopper' : 'Kies een groep'}
+                </label>
+                {assignOptions.length === 0 ? (
+                  <p style={styles.emptyHint}>
                     {assignType === 'member'
-                      ? `${item.firstName} ${item.lastName}`
-                      : item.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+                      ? 'Geen shoppers gevonden. Voeg eerst leden toe via Groepen & leden.'
+                      : 'Geen groepen gevonden. Maak eerst een groep aan.'}
+                  </p>
+                ) : (
+                  <select
+                    value={assignId}
+                    onChange={(e) => setAssignId(e.target.value)}
+                    style={styles.input}
+                    required
+                  >
+                    <option value="">— Kies —</option>
+                    {assignOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {assignType === 'member'
+                          ? `${item.firstName} ${item.lastName}`
+                          : item.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </>
+          )}
 
           {error && <p style={styles.errorText}>{error}</p>}
 
