@@ -132,11 +132,16 @@ function LibraryTab({ claims }) {
         CentralProductFactory.getAll(),
         OrganizationFactory.getAll(),
       ]);
-      setPending(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const pendingItems = pendingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.submittedAt?.seconds || 0) - (b.submittedAt?.seconds || 0));
+      setPending(pendingItems);
       setCentral(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       const orgMap = {};
       orgsSnap.docs.forEach(d => { orgMap[d.id] = d.data().name; });
       setOrgs(orgMap);
+    } catch (err) {
+      console.error('Failed to load library data:', err);
+      alert('Laden mislukt: ' + err.message);
     } finally { setLoading(false); }
   }
 
@@ -247,11 +252,16 @@ function StoresTab({ claims }) {
         CentralStoreFactory.getAll(),
         OrganizationFactory.getAll(),
       ]);
-      setPending(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const pendingItems = pendingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.submittedAt?.seconds || 0) - (b.submittedAt?.seconds || 0));
+      setPending(pendingItems);
       setCentral(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       const orgMap = {};
       orgsSnap.docs.forEach(d => { orgMap[d.id] = d.data().name; });
       setOrgs(orgMap);
+    } catch (err) {
+      console.error('Failed to load stores data:', err);
+      alert('Laden mislukt: ' + err.message);
     } finally { setLoading(false); }
   }
 
