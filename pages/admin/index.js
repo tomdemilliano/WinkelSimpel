@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory } from '../../lib/dbSchema';
+import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, ProductFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory } from '../../lib/dbSchema';
 
 function AdminDashboard({ claims }) {
   const router = useRouter();
@@ -153,6 +153,8 @@ function LibraryTab({ claims }) {
       });
       // Update submission status
       await ProductSubmissionFactory.approve(submission.id, ref.id);
+      // Koppel het originele org-product aan het centrale product zodat het niet dubbel verschijnt
+      await ProductFactory.update(submission.orgId, submission.orgProductId, { centralProductId: ref.id });
       setPending(prev => prev.filter(p => p.id !== submission.id));
       setCentral(prev => [...prev, { id: ref.id, name: submission.name, imageUrl: submission.imageUrl, unit: submission.unit }]
         .sort((a, b) => a.name.localeCompare(b.name)));

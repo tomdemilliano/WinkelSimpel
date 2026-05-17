@@ -86,6 +86,23 @@ function ProductLibrary({ claims }) {
     setShowForm(true);
   }
 
+  async function handleCopyFromCentral(centralProduct) {
+    try {
+      await ProductFactory.create(orgId, {
+        name: centralProduct.name,
+        imageUrl: centralProduct.imageUrl,
+        unit: centralProduct.unit,
+        categoryId: null,
+        centralProductId: centralProduct.id,
+        createdBy: claims.uid,
+      });
+      await loadProducts();
+    } catch (err) {
+      console.error('Failed to copy product:', err);
+      alert('Kopiëren mislukt. Probeer opnieuw.');
+    }
+  }
+
   async function handleDelete(product) {
     if (!confirm(`"${product.name}" verwijderen?`)) return;
     try {
@@ -111,16 +128,26 @@ function ProductLibrary({ claims }) {
     await loadProducts();
   }
 
-  // Combineer centrale + org producten, vermijd duplicaten op naam
-  const orgProductNames = new Set(products.map(p => p.name.toLowerCase().trim()));
-  const centralOnly = centralProducts.filter(
-    p => !orgProductNames.has(p.name.toLowerCase().trim())
+  // Deduplicatie: org-producten met centralProductId verbergen het centrale product.
+  // Fallback op naam voor bestaande org-producten zonder expliciete koppeling.
+  const explicitLinkedIds = new Set(
+    products.filter(p => p.centralProductId).map(p => p.centralProductId)
+  );
+  const orgNamesWithoutLink = new Set(
+    products.filter(p => !p.centralProductId).map(p => p.name.toLowerCase().trim())
+  );
+  const unlinkedCentralProducts = centralProducts.filter(
+    c => !explicitLinkedIds.has(c.id) && !orgNamesWithoutLink.has(c.name.toLowerCase().trim())
   );
   const allProducts = [
-    ...centralProducts.filter(p => orgProductNames.has(p.name.toLowerCase().trim()))
-      .map(c => ({ ...products.find(p => p.name.toLowerCase().trim() === c.name.toLowerCase().trim()), _central: c })),
-    ...centralOnly,
-    ...products.filter(p => !centralProducts.some(c => c.name.toLowerCase().trim() === p.name.toLowerCase().trim())),
+    ...products.map(p => ({
+      ...p,
+      _source: 'org',
+      _centralProduct: p.centralProductId
+        ? centralProducts.find(c => c.id === p.centralProductId) || null
+        : centralProducts.find(c => c.name.toLowerCase().trim() === p.name.toLowerCase().trim()) || null,
+    })),
+    ...unlinkedCentralProducts.map(c => ({ ...c, _source: 'central' })),
   ];
 
   const filteredProducts = allProducts.filter((p) =>
@@ -164,11 +191,12 @@ function ProductLibrary({ claims }) {
         <div style={styles.productGrid}>
           {filteredProducts.map((product) => (
             <ProductCard
-              key={product.id}
+              key={`${product._source}-${product.id}`}
               product={product}
               category={categories.find(c => c.id === product.categoryId) || null}
               onEdit={() => handleEdit(product)}
               onDelete={() => handleDelete(product)}
+              onCopy={() => handleCopyFromCentral(product)}
             />
           ))}
         </div>
@@ -192,9 +220,9 @@ function ProductLibrary({ claims }) {
 // ---------------------------------------------------------------------------
 // ProductCard
 // ---------------------------------------------------------------------------
-function ProductCard({ product, category, onEdit, onDelete }) {
+function ProductCard({ product, category, onEdit, onDelete, onCopy }) {
   const isCentral = product._source === 'central';
-  const hasOrgVersion = !!product._central;
+  const isLinkedToCentral = product._source === 'org' && !!product._centralProduct;
   return (
     <div style={styles.card}>
       <div style={styles.cardImageWrapper}>
@@ -203,7 +231,7 @@ function ProductCard({ product, category, onEdit, onDelete }) {
       <div style={styles.cardBody}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
           <p style={styles.cardName}>{product.name}</p>
-          {isCentral && !hasOrgVersion && (
+          {(isCentral || isLinkedToCentral) && (
             <span style={styles.centralBadge}>Centraal</span>
           )}
         </div>
@@ -220,7 +248,12 @@ function ProductCard({ product, category, onEdit, onDelete }) {
       <div style={styles.cardActions}>
         {!isCentral && <button style={styles.editButton} onClick={onEdit}>Bewerken</button>}
         {!isCentral && <button style={styles.deleteButton} onClick={onDelete}>Verwijderen</button>}
-        {isCentral && !hasOrgVersion && <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alleen-lezen</span>}
+        {isCentral && (
+          <>
+            <button style={styles.copyButton} onClick={onCopy}>Kopieer</button>
+            <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alleen-lezen</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -680,6 +713,16 @@ const styles = {
     padding: '0.35rem 0.75rem',
     backgroundColor: '#FFEBEE',
     color: '#c62828',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '0.8rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  copyButton: {
+    padding: '0.35rem 0.75rem',
+    backgroundColor: '#E8F5E9',
+    color: '#2E7D32',
     border: 'none',
     borderRadius: '6px',
     fontSize: '0.8rem',
