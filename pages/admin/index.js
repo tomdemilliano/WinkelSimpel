@@ -153,23 +153,31 @@ function LibraryTab({ claims }) {
       // Verwerk categorie-beslissing
       let centralCategoryId = null;
       if (categoryDecision === '__create__' && submission.orgCategoryId) {
-        const catRef = await CentralCategoryFactory.create({
-          name: submission.orgCategoryName,
-          iconUrl: submission.orgCategoryIconUrl || '',
-          color: submission.orgCategoryColor || '#4CAF50',
-          approvedBy: claims.uid,
-          sourceOrgId: submission.orgId,
-          sourceCategoryId: submission.orgCategoryId,
-        });
-        centralCategoryId = catRef.id;
-        setCentralCategories(prev => [...prev, {
-          id: catRef.id,
-          name: submission.orgCategoryName,
-          iconUrl: submission.orgCategoryIconUrl || '',
-          color: submission.orgCategoryColor || '#4CAF50',
-        }].sort((a, b) => a.name.localeCompare(b.name)));
+        // Controleer eerst of de categorie ondertussen al aangemaakt werd (bijv. door vorige goedkeuring)
+        const alreadyExists = centralCategories.find(
+          c => c.name.toLowerCase().trim() === submission.orgCategoryName?.toLowerCase().trim()
+        );
+        if (alreadyExists) {
+          centralCategoryId = alreadyExists.id;
+        } else {
+          const catRef = await CentralCategoryFactory.create({
+            name: submission.orgCategoryName,
+            iconUrl: submission.orgCategoryIconUrl || '',
+            color: submission.orgCategoryColor || '#4CAF50',
+            approvedBy: claims.uid,
+            sourceOrgId: submission.orgId,
+            sourceCategoryId: submission.orgCategoryId,
+          });
+          centralCategoryId = catRef.id;
+          setCentralCategories(prev => [...prev, {
+            id: catRef.id,
+            name: submission.orgCategoryName,
+            iconUrl: submission.orgCategoryIconUrl || '',
+            color: submission.orgCategoryColor || '#4CAF50',
+          }].sort((a, b) => a.name.localeCompare(b.name)));
+        }
         // Koppel org-categorie aan centrale categorie (non-blocking)
-        CategoryFactory.update(submission.orgId, submission.orgCategoryId, { centralCategoryId: catRef.id })
+        CategoryFactory.update(submission.orgId, submission.orgCategoryId, { centralCategoryId })
           .catch(err => console.warn('Could not link org category:', err.message));
       } else if (categoryDecision && categoryDecision !== '__none__') {
         centralCategoryId = categoryDecision;
@@ -508,18 +516,26 @@ function CentralStoreCard({ store, onDelete }) {
 // ---------------------------------------------------------------------------
 function SubmissionCard({ submission, orgName, onApprove, onReject, centralCategories }) {
   const hasCat = !!submission.orgCategoryId;
-  const catAlreadyCentral = !!submission.orgCategoryCentralId;
 
-  const [catAction, setCatAction] = useState(() => {
-    if (!hasCat) return 'none';
-    if (catAlreadyCentral) return 'existing_auto';
-    return 'new';
-  });
-  const [catSelectId, setCatSelectId] = useState(submission.orgCategoryCentralId || '');
+  // Berekend uit live centralCategories-state: detecteert ook categorieën die net werden aangemaakt
+  const matchingCentralCat = hasCat && submission.orgCategoryName
+    ? centralCategories.find(c =>
+        c.id === submission.orgCategoryCentralId ||
+        c.name.toLowerCase().trim() === submission.orgCategoryName.toLowerCase().trim()
+      )
+    : null;
+  const catAlreadyCentral = !!matchingCentralCat;
+
+  // Gebruikerskeuze (enkel relevant als !catAlreadyCentral)
+  const [userCatAction, setUserCatAction] = useState('new');
+  const [catSelectId, setCatSelectId] = useState('');
+
+  // Effectieve actie: als de categorie al centraal staat, gebruik dat — anders de keuze van de gebruiker
+  const catAction = catAlreadyCentral ? 'existing_auto' : (hasCat ? userCatAction : 'none');
 
   function getResolvedCategoryDecision() {
     if (!hasCat || catAction === 'none') return null;
-    if (catAction === 'existing_auto') return submission.orgCategoryCentralId;
+    if (catAction === 'existing_auto') return matchingCentralCat.id;
     if (catAction === 'new') return '__create__';
     if (catAction === 'existing') return catSelectId || null;
     return null;
@@ -570,15 +586,15 @@ function SubmissionCard({ submission, orgName, onApprove, onReject, centralCateg
               </p>
               <label style={styles.radioLabel}>
                 <input type="radio" name={`cat-${submission.id}`}
-                  checked={catAction === 'new'} onChange={() => setCatAction('new')} />
+                  checked={userCatAction === 'new'} onChange={() => setUserCatAction('new')} />
                 Toevoegen aan centrale bibliotheek
               </label>
               <label style={styles.radioLabel}>
                 <input type="radio" name={`cat-${submission.id}`}
-                  checked={catAction === 'existing'} onChange={() => setCatAction('existing')} />
+                  checked={userCatAction === 'existing'} onChange={() => setUserCatAction('existing')} />
                 Koppelen aan bestaande centrale categorie
               </label>
-              {catAction === 'existing' && (
+              {userCatAction === 'existing' && (
                 <select value={catSelectId} onChange={e => setCatSelectId(e.target.value)}
                   style={{ fontSize: '0.82rem', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1.5px solid #ddd', marginLeft: '1.4rem', backgroundColor: '#fff' }}>
                   <option value="">— Kies een categorie —</option>
@@ -589,7 +605,7 @@ function SubmissionCard({ submission, orgName, onApprove, onReject, centralCateg
               )}
               <label style={styles.radioLabel}>
                 <input type="radio" name={`cat-${submission.id}`}
-                  checked={catAction === 'none'} onChange={() => setCatAction('none')} />
+                  checked={userCatAction === 'none'} onChange={() => setUserCatAction('none')} />
                 Geen centrale categorie toewijzen
               </label>
             </div>

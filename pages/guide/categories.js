@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { CategoryFactory, StorageFactory } from '../../lib/dbSchema';
+import { CategoryFactory, StorageFactory, CentralCategoryFactory } from '../../lib/dbSchema';
 
 const ARASAAC_BASE = 'https://static.arasaac.org/pictograms';
 const ARASAAC_API = 'https://api.arasaac.org/v1/pictograms';
@@ -47,6 +47,7 @@ function CategoriesPage({ claims }) {
   const { orgId } = claims;
 
   const [categories, setCategories] = useState([]);
+  const [centralCategories, setCentralCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -58,12 +59,33 @@ function CategoriesPage({ claims }) {
   async function loadCategories() {
     setLoading(true);
     try {
-      const snap = await CategoryFactory.getAll(orgId);
-      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const [orgSnap, centralSnap] = await Promise.all([
+        CategoryFactory.getAll(orgId),
+        CentralCategoryFactory.getAll(),
+      ]);
+      setCategories(orgSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCentralCategories(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error('Failed to load categories:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCopyFromCentral(centralCategory) {
+    try {
+      await CategoryFactory.create(orgId, {
+        name: centralCategory.name,
+        iconUrl: centralCategory.iconUrl || '',
+        arasaacId: null,
+        color: centralCategory.color || '#4CAF50',
+        centralCategoryId: centralCategory.id,
+        createdBy: claims.uid,
+      });
+      await loadCategories();
+    } catch (err) {
+      console.error('Failed to copy category:', err);
+      alert('Kopiëren mislukt. Probeer opnieuw.');
     }
   }
 
@@ -81,6 +103,26 @@ function CategoriesPage({ claims }) {
     }
   }
 
+  // Deduplicatie: zelfde patroon als producten
+  const explicitLinkedIds = new Set(
+    categories.filter(c => c.centralCategoryId).map(c => c.centralCategoryId)
+  );
+  const orgNamesWithoutLink = new Set(
+    categories.filter(c => !c.centralCategoryId).map(c => c.name.toLowerCase().trim())
+  );
+  const unlinkedCentralCategories = centralCategories.filter(
+    c => !explicitLinkedIds.has(c.id) && !orgNamesWithoutLink.has(c.name.toLowerCase().trim())
+  );
+  const allCategories = [
+    ...categories.map(c => ({
+      ...c,
+      _source: 'org',
+      _isCentral: !!(c.centralCategoryId ||
+        centralCategories.find(cc => cc.name.toLowerCase().trim() === c.name.toLowerCase().trim())),
+    })),
+    ...unlinkedCentralCategories.map(c => ({ ...c, _source: 'central' })),
+  ];
+
   return (
     <div style={styles.page}>
       <div style={styles.header}>
@@ -95,28 +137,48 @@ function CategoriesPage({ claims }) {
 
       {loading ? (
         <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
-      ) : categories.length === 0 ? (
+      ) : allCategories.length === 0 ? (
         <div style={styles.centered}>
           <p style={styles.hint}>Nog geen categorieën. Voeg er een toe!</p>
         </div>
       ) : (
         <div style={styles.categoryList}>
-          {categories.map(cat => (
-            <div key={cat.id} style={styles.card}>
-              <CategoryIcon iconUrl={cat.iconUrl} size={56} />
-              <div style={styles.cardBody}>
-                <p style={styles.cardName}>{cat.name}</p>
+          {allCategories.map(cat => {
+            const isCentral = cat._source === 'central';
+            return (
+              <div key={`${cat._source}-${cat.id}`} style={styles.card}>
+                <CategoryIcon iconUrl={cat.iconUrl} size={56} />
+                <div style={styles.cardBody}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <p style={styles.cardName}>{cat.name}</p>
+                    {(isCentral || cat._isCentral) && (
+                      <span style={styles.centralBadge}>Centraal</span>
+                    )}
+                  </div>
+                </div>
+                <div style={styles.cardActions}>
+                  {!isCentral && (
+                    <>
+                      <button style={styles.editButton} onClick={() => { setEditingCategory(cat); setShowForm(true); }}>
+                        Bewerken
+                      </button>
+                      <button style={styles.deleteButton} onClick={() => handleDelete(cat)}>
+                        Verwijderen
+                      </button>
+                    </>
+                  )}
+                  {isCentral && (
+                    <>
+                      <button style={styles.copyButton} onClick={() => handleCopyFromCentral(cat)}>
+                        Kopieer
+                      </button>
+                      <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alleen-lezen</span>
+                    </>
+                  )}
+                </div>
               </div>
-              <div style={styles.cardActions}>
-                <button style={styles.editButton} onClick={() => { setEditingCategory(cat); setShowForm(true); }}>
-                  Bewerken
-                </button>
-                <button style={styles.deleteButton} onClick={() => handleDelete(cat)}>
-                  Verwijderen
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -368,6 +430,8 @@ const styles = {
   cardActions: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },
   editButton: { padding: '0.35rem 0.75rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer' },
   deleteButton: { padding: '0.35rem 0.75rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer' },
+  copyButton: { padding: '0.35rem 0.75rem', backgroundColor: '#E8F5E9', color: '#2E7D32', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer' },
+  centralBadge: { fontSize: '0.7rem', fontWeight: '700', color: '#1565C0', backgroundColor: '#E3F2FD', padding: '0.15rem 0.5rem', borderRadius: '20px', whiteSpace: 'nowrap' },
   modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
   modal: { backgroundColor: '#fff', borderRadius: '20px 20px 0 0', padding: '1.5rem', width: '100%', maxWidth: '600px', maxHeight: '92vh', overflowY: 'auto' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
