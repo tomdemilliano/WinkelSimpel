@@ -316,7 +316,7 @@ function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
     try {
       await ProductSubmissionFactory.create({ name, imageUrl, unit, orgId, orgProductId });
     } catch (err) {
-      console.warn('Submission to central failed (non-blocking):', err.message);
+      console.error('Submission to central failed:', err.message, err);
     }
   }
 

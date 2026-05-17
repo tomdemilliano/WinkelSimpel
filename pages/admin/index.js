@@ -154,7 +154,9 @@ function LibraryTab({ claims }) {
       // Update submission status
       await ProductSubmissionFactory.approve(submission.id, ref.id);
       // Koppel het originele org-product aan het centrale product zodat het niet dubbel verschijnt
-      await ProductFactory.update(submission.orgId, submission.orgProductId, { centralProductId: ref.id });
+      // Non-blocking: kan falen als security rules admins geen schrijfrecht geven op org-producten
+      ProductFactory.update(submission.orgId, submission.orgProductId, { centralProductId: ref.id })
+        .catch(err => console.warn('Could not link org product to central product:', err.message));
       setPending(prev => prev.filter(p => p.id !== submission.id));
       setCentral(prev => [...prev, { id: ref.id, name: submission.name, imageUrl: submission.imageUrl, unit: submission.unit }]
         .sort((a, b) => a.name.localeCompare(b.name)));
