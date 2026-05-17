@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, ProductFactory, CentralCategoryFactory, CategoryFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory } from '../../lib/dbSchema';
+import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, ProductFactory, CentralCategoryFactory, CategoryFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory, StorageFactory } from '../../lib/dbSchema';
 
 function AdminDashboard({ claims }) {
   const router = useRouter();
@@ -122,6 +122,8 @@ function LibraryTab({ claims }) {
   const [orgs, setOrgs] = useState({});
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState('pending'); // 'pending' | 'approved' | 'categories'
+  const [editingCategory, setEditingCategory] = useState(null); // null = closed, undefined = new, object = edit
+  const [editingProduct, setEditingProduct] = useState(null);   // null = closed, undefined = new, object = edit
 
   useEffect(() => { loadAll(); }, []);
 
@@ -226,6 +228,55 @@ function LibraryTab({ claims }) {
     setCentral(prev => prev.filter(p => p.id !== product.id));
   }
 
+  async function handleSaveCentralCategory({ name, iconUrl, color, iconFile }) {
+    const isEdit = editingCategory && editingCategory.id;
+    let finalIconUrl = iconUrl;
+    if (isEdit) {
+      if (iconFile) finalIconUrl = await StorageFactory.uploadCentralCategoryIcon(editingCategory.id, iconFile);
+      await CentralCategoryFactory.update(editingCategory.id, { name, iconUrl: finalIconUrl, color });
+      setCentralCategories(prev =>
+        prev.map(c => c.id === editingCategory.id ? { ...c, name, iconUrl: finalIconUrl, color } : c)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } else {
+      const ref = await CentralCategoryFactory.create({ name, iconUrl: '', color, approvedBy: claims.uid });
+      if (iconFile) {
+        finalIconUrl = await StorageFactory.uploadCentralCategoryIcon(ref.id, iconFile);
+        await CentralCategoryFactory.update(ref.id, { iconUrl: finalIconUrl });
+      }
+      setCentralCategories(prev =>
+        [...prev, { id: ref.id, name, iconUrl: finalIconUrl, color }]
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    }
+    setEditingCategory(null);
+  }
+
+  async function handleSaveCentralProduct({ name, imageUrl, unit, centralCategoryId, imageFile }) {
+    const isEdit = editingProduct && editingProduct.id;
+    let finalImageUrl = imageUrl;
+    const catId = centralCategoryId || null;
+    if (isEdit) {
+      if (imageFile) finalImageUrl = await StorageFactory.uploadCentralProductImage(editingProduct.id, imageFile);
+      await CentralProductFactory.update(editingProduct.id, { name, imageUrl: finalImageUrl, unit, centralCategoryId: catId });
+      setCentral(prev =>
+        prev.map(p => p.id === editingProduct.id ? { ...p, name, imageUrl: finalImageUrl, unit, centralCategoryId: catId } : p)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } else {
+      const ref = await CentralProductFactory.create({ name, imageUrl: '', unit, approvedBy: claims.uid, centralCategoryId: catId });
+      if (imageFile) {
+        finalImageUrl = await StorageFactory.uploadCentralProductImage(ref.id, imageFile);
+        await CentralProductFactory.update(ref.id, { imageUrl: finalImageUrl });
+      }
+      setCentral(prev =>
+        [...prev, { id: ref.id, name, imageUrl: finalImageUrl, unit, centralCategoryId: catId }]
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    }
+    setEditingProduct(null);
+  }
+
   if (loading) return <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>;
 
   return (
@@ -266,6 +317,10 @@ function LibraryTab({ claims }) {
 
       {section === 'approved' && (
         <>
+          <div style={styles.sectionHeader}>
+            <p style={styles.sectionTitle}>Centrale producten</p>
+            <button style={styles.addButton} onClick={() => setEditingProduct(undefined)}>+ Nieuw</button>
+          </div>
           {central.length === 0 ? (
             <div style={styles.centered}><p style={styles.hint}>Centrale bibliotheek is leeg.</p></div>
           ) : (
@@ -273,6 +328,7 @@ function LibraryTab({ claims }) {
               {central.map(p => (
                 <CentralProductCard key={p.id} product={p}
                   centralCategories={centralCategories}
+                  onEdit={() => setEditingProduct(p)}
                   onDelete={() => handleDeleteCentral(p)} />
               ))}
             </div>
@@ -282,17 +338,36 @@ function LibraryTab({ claims }) {
 
       {section === 'categories' && (
         <>
+          <div style={styles.sectionHeader}>
+            <p style={styles.sectionTitle}>Centrale categorieën</p>
+            <button style={styles.addButton} onClick={() => setEditingCategory(undefined)}>+ Nieuw</button>
+          </div>
           {centralCategories.length === 0 ? (
             <div style={styles.centered}><p style={styles.hint}>Nog geen centrale categorieën.</p></div>
           ) : (
             <div style={styles.cardList}>
               {centralCategories.map(c => (
                 <CentralCategoryCard key={c.id} category={c}
+                  onEdit={() => setEditingCategory(c)}
                   onDelete={() => handleDeleteCentralCategory(c)} />
               ))}
             </div>
           )}
         </>
+      )}
+
+      {editingCategory !== null && (
+        <CentralCategoryForm
+          category={editingCategory}
+          onSave={handleSaveCentralCategory}
+          onClose={() => setEditingCategory(null)} />
+      )}
+      {editingProduct !== null && (
+        <CentralProductForm
+          product={editingProduct}
+          centralCategories={centralCategories}
+          onSave={handleSaveCentralProduct}
+          onClose={() => setEditingProduct(null)} />
       )}
     </>
   );
@@ -627,7 +702,7 @@ function SubmissionCard({ submission, orgName, onApprove, onReject, centralCateg
 // ---------------------------------------------------------------------------
 // CentralProductCard
 // ---------------------------------------------------------------------------
-function CentralProductCard({ product, onDelete, centralCategories }) {
+function CentralProductCard({ product, onEdit, onDelete, centralCategories }) {
   const category = centralCategories?.find(c => c.id === product.centralCategoryId);
   return (
     <div style={styles.card}>
@@ -652,7 +727,10 @@ function CentralProductCard({ product, onDelete, centralCategories }) {
           </div>
         )}
       </div>
-      <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+      <div style={styles.cardActions}>
+        <button style={styles.manageButton} onClick={onEdit}>Bewerken</button>
+        <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+      </div>
     </div>
   );
 }
@@ -660,7 +738,7 @@ function CentralProductCard({ product, onDelete, centralCategories }) {
 // ---------------------------------------------------------------------------
 // CentralCategoryCard
 // ---------------------------------------------------------------------------
-function CentralCategoryCard({ category, onDelete }) {
+function CentralCategoryCard({ category, onEdit, onDelete }) {
   return (
     <div style={styles.card}>
       <div style={{ ...styles.cardAvatar, borderRadius: '8px', backgroundColor: category.color || '#E8F5E9', overflow: 'hidden' }}>
@@ -676,7 +754,172 @@ function CentralCategoryCard({ category, onDelete }) {
       <div style={styles.cardBody}>
         <p style={styles.cardName}>{category.name}</p>
       </div>
-      <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+      <div style={styles.cardActions}>
+        <button style={styles.manageButton} onClick={onEdit}>Bewerken</button>
+        <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CentralCategoryForm
+// ---------------------------------------------------------------------------
+function CentralCategoryForm({ category, onSave, onClose }) {
+  const [name, setName] = useState(category?.name || '');
+  const [iconUrl, setIconUrl] = useState(category?.iconUrl || '');
+  const [color, setColor] = useState(category?.color || '#4CAF50');
+  const [iconFile, setIconFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const previewUrl = iconFile ? URL.createObjectURL(iconFile) : iconUrl;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) { setError('Geef de categorie een naam.'); return; }
+    setSaving(true);
+    try {
+      await onSave({ name: name.trim(), iconUrl: iconUrl.trim(), color, iconFile });
+    } catch (err) {
+      setError('Opslaan mislukt: ' + err.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>{category?.id ? 'Categorie bewerken' : 'Nieuwe categorie'}</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Naam</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              style={styles.input} placeholder="bijv. Groenten & Fruit" required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Icoontje — URL (bijv. ARASAAC)</label>
+            <input type="text" value={iconUrl}
+              onChange={e => { setIconUrl(e.target.value); setIconFile(null); }}
+              style={styles.input} placeholder="https://..." />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>of upload een afbeelding</label>
+            <input type="file" accept="image/*"
+              onChange={e => { setIconFile(e.target.files[0] || null); setIconUrl(''); }}
+              style={{ fontSize: '0.875rem' }} />
+          </div>
+          {previewUrl && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+              <img src={previewUrl} alt="" referrerPolicy="no-referrer"
+                style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: '6px', backgroundColor: color }} />
+              <span style={{ fontSize: '0.8rem', color: '#888' }}>Voorbeeld</span>
+            </div>
+          )}
+          <div style={styles.field}>
+            <label style={styles.label}>Kleur</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                style={{ width: '44px', height: '44px', border: '1.5px solid #ddd', borderRadius: '8px', cursor: 'pointer', padding: '2px' }} />
+              <span style={{ fontSize: '0.85rem', color: '#666' }}>{color}</span>
+            </div>
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CentralProductForm
+// ---------------------------------------------------------------------------
+const UNITS = ['stuks', 'pak', 'fles', 'blik', 'zak', 'doos', 'pot', 'kg'];
+
+function CentralProductForm({ product, centralCategories, onSave, onClose }) {
+  const [name, setName] = useState(product?.name || '');
+  const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
+  const [unit, setUnit] = useState(product?.unit || 'stuks');
+  const [centralCategoryId, setCentralCategoryId] = useState(product?.centralCategoryId || '');
+  const [imageFile, setImageFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const previewUrl = imageFile ? URL.createObjectURL(imageFile) : imageUrl;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) { setError('Geef het product een naam.'); return; }
+    setSaving(true);
+    try {
+      await onSave({ name: name.trim(), imageUrl: imageUrl.trim(), unit, centralCategoryId, imageFile });
+    } catch (err) {
+      setError('Opslaan mislukt: ' + err.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>{product?.id ? 'Product bewerken' : 'Nieuw product'}</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Naam</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              style={styles.input} placeholder="bijv. Appels" required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Eenheid</label>
+            <select value={unit} onChange={e => setUnit(e.target.value)} style={styles.input}>
+              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Categorie</label>
+            <select value={centralCategoryId} onChange={e => setCentralCategoryId(e.target.value)} style={styles.input}>
+              <option value="">— Geen categorie —</option>
+              {centralCategories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Afbeelding — URL</label>
+            <input type="text" value={imageUrl}
+              onChange={e => { setImageUrl(e.target.value); setImageFile(null); }}
+              style={styles.input} placeholder="https://..." />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>of upload een afbeelding</label>
+            <input type="file" accept="image/*"
+              onChange={e => { setImageFile(e.target.files[0] || null); setImageUrl(''); }}
+              style={{ fontSize: '0.875rem' }} />
+          </div>
+          {previewUrl && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+              <img src={previewUrl} alt="" referrerPolicy="no-referrer"
+                style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: '6px' }} />
+              <span style={{ fontSize: '0.8rem', color: '#888' }}>Voorbeeld</span>
+            </div>
+          )}
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
