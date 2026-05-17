@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory, CategoryFactory } from '../../lib/dbSchema';
+import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory, CategoryFactory, CentralCategoryFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // ProductImage — toont afbeelding of standaard winkeltas icon
@@ -52,6 +52,7 @@ function ProductLibrary({ claims }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [centralProducts, setCentralProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [centralCategories, setCentralCategories] = useState([]);
 
   // Load products on mount
   useEffect(() => {
@@ -61,14 +62,16 @@ function ProductLibrary({ claims }) {
   async function loadProducts() {
     setLoading(true);
     try {
-      const [orgSnap, centralSnap, catSnap] = await Promise.all([
+      const [orgSnap, centralSnap, catSnap, centralCatSnap] = await Promise.all([
         ProductFactory.getAll(orgId),
         CentralProductFactory.getAll(),
         CategoryFactory.getAll(orgId),
+        CentralCategoryFactory.getAll(),
       ]);
       setProducts(orgSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'org' })));
       setCentralProducts(centralSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'central' })));
       setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCentralCategories(centralCatSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -193,7 +196,11 @@ function ProductLibrary({ claims }) {
             <ProductCard
               key={`${product._source}-${product.id}`}
               product={product}
-              category={categories.find(c => c.id === product.categoryId) || null}
+              category={
+                product._source === 'central'
+                  ? (centralCategories.find(c => c.id === product.centralCategoryId) || null)
+                  : (categories.find(c => c.id === product.categoryId) || null)
+              }
               onEdit={() => handleEdit(product)}
               onDelete={() => handleDelete(product)}
               onCopy={() => handleCopyFromCentral(product)}
