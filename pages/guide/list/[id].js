@@ -534,7 +534,8 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [activeCategoryId, setActiveCategoryId] = useState(null); // null = alles
+  const [activeCategoryId, setActiveCategoryId] = useState(null);
+  const [gridExpanded, setGridExpanded] = useState(true);
 
   useEffect(() => {
     ProductFactory.getAll(orgId).then((snap) => {
@@ -551,10 +552,13 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
     );
   }
 
-  // Categorieën die minstens één product hebben (excl. al toegevoegde)
+  // Categorieën die minstens één beschikbaar product hebben, alfabetisch gesorteerd
   const availableProducts = products.filter(p => !existingProductIds.includes(p.id));
   const usedCategoryIds = new Set(availableProducts.map(p => p.categoryId).filter(Boolean));
-  const filterCategories = Object.values(categories).filter(c => usedCategoryIds.has(c.id));
+  const filterCategories = Object.values(categories)
+    .filter(c => usedCategoryIds.has(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+  const activeCat = filterCategories.find(c => c.id === activeCategoryId) || null;
 
   const filtered = availableProducts.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
@@ -578,32 +582,42 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
           style={{ ...styles.searchInput, marginBottom: '0.5rem', flexShrink: 0 }}
         />
 
-        {/* Visuele categoriefilterbalk */}
+        {/* Uitklapbaar categorieraster */}
         {filterCategories.length > 0 && (
-          <div style={styles.categoryFilterRow}>
-            <button
-              style={{ ...styles.categoryChip, ...(activeCategoryId === null ? styles.categoryChipActive : {}) }}
-              onClick={() => setActiveCategoryId(null)}
-            >
-              <span style={styles.categoryChipLabel}>Alles</span>
-            </button>
-            {filterCategories.map(cat => (
-              <button
-                key={cat.id}
-                style={{
-                  ...styles.categoryChip,
-                  ...(activeCategoryId === cat.id ? styles.categoryChipActive : {}),
-                  ...(activeCategoryId === cat.id && cat.color ? { borderColor: cat.color, backgroundColor: cat.color + '22' } : {}),
-                }}
-                onClick={() => setActiveCategoryId(prev => prev === cat.id ? null : cat.id)}
-              >
-                {cat.iconUrl && (
-                  <img src={cat.iconUrl} alt="" style={styles.categoryChipIcon} referrerPolicy="no-referrer" />
+          gridExpanded ? (
+            <div style={styles.categoryGrid}>
+              {filterCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  style={{
+                    ...styles.categoryGridTile,
+                    ...(activeCategoryId === cat.id ? styles.categoryGridTileActive : {}),
+                  }}
+                  onClick={() => { setActiveCategoryId(cat.id); setGridExpanded(false); }}
+                >
+                  <div style={{ ...styles.categoryGridIconBox, backgroundColor: (cat.color || '#4CAF50') + '33' }}>
+                    {cat.iconUrl
+                      ? <img src={cat.iconUrl} alt="" style={styles.categoryGridIcon} referrerPolicy="no-referrer" />
+                      : <span style={{ fontSize: '1.75rem' }}>🏷️</span>}
+                  </div>
+                  <span style={styles.categoryGridLabel}>{cat.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '0.6rem', flexShrink: 0 }}>
+              <button style={styles.activeFilterChip} onClick={() => setGridExpanded(true)}>
+                {activeCat?.iconUrl && (
+                  <img src={activeCat.iconUrl} alt="" style={styles.activeFilterChipIcon} referrerPolicy="no-referrer" />
                 )}
-                <span style={styles.categoryChipLabel}>{cat.name}</span>
+                <span>{activeCat?.name}</span>
               </button>
-            ))}
-          </div>
+              <button style={styles.activeFilterChipClose}
+                onClick={() => { setActiveCategoryId(null); setGridExpanded(true); }}>
+                ×
+              </button>
+            </div>
+          )
         )}
 
         {/* Scrollbare productlijst */}
@@ -1271,11 +1285,15 @@ const styles = {
   itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem', marginTop: '0.2rem' },
   itemCategoryIcon: { width: '14px', height: '14px', objectFit: 'contain', flexShrink: 0 },
   itemCategoryLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
-  categoryFilterRow: { display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.6rem', flexShrink: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' },
-  categoryChip: { display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.45rem 0.75rem', borderRadius: '20px', border: '1.5px solid #eee', backgroundColor: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontSize: '0.85rem' },
-  categoryChipActive: { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' },
-  categoryChipIcon: { width: '20px', height: '20px', objectFit: 'contain', flexShrink: 0 },
-  categoryChipLabel: { fontSize: '0.82rem', fontWeight: '600', color: '#444' },
+  categoryGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', paddingBottom: '0.75rem', flexShrink: 0 },
+  categoryGridTile: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, borderRadius: '12px', border: '2px solid #eee', backgroundColor: '#fff', cursor: 'pointer', overflow: 'hidden' },
+  categoryGridTileActive: { borderColor: '#4CAF50', borderWidth: '2.5px' },
+  categoryGridIconBox: { width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  categoryGridIcon: { width: '60%', height: '60%', objectFit: 'contain' },
+  categoryGridLabel: { width: '100%', padding: '0.3rem 0.25rem', fontSize: '0.72rem', fontWeight: '600', color: '#444', textAlign: 'center', lineHeight: 1.2, backgroundColor: '#fff' },
+  activeFilterChip: { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.875rem', borderRadius: '20px', border: '1.5px solid #4CAF50', backgroundColor: '#E8F5E9', cursor: 'pointer', fontSize: '0.875rem', fontWeight: '600', color: '#2E7D32' },
+  activeFilterChipIcon: { width: '18px', height: '18px', objectFit: 'contain', flexShrink: 0 },
+  activeFilterChipClose: { width: '32px', height: '32px', borderRadius: '50%', border: '1.5px solid #ddd', backgroundColor: '#f5f5f5', cursor: 'pointer', fontSize: '1.1rem', color: '#666', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   assignedLabelButton: {
   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
