@@ -6,7 +6,7 @@
  * - Centrale bibliotheek: productsubmissions reviewen + centrale producten beheren
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
 import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, ProductFactory, CentralCategoryFactory, CategoryFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory, StorageFactory } from '../../lib/dbSchema';
@@ -849,17 +849,28 @@ function CentralProductForm({ product, centralCategories, onSave, onClose }) {
   const [unit, setUnit] = useState(product?.unit || 'stuks');
   const [centralCategoryId, setCentralCategoryId] = useState(product?.centralCategoryId || '');
   const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
+  const [manualImageUrl, setManualImageUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef();
 
-  const previewUrl = imageFile ? URL.createObjectURL(imageFile) : imageUrl;
+  function handleImageChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Kies een afbeelding (jpg, png, webp).'); return; }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setImageUrl('');
+    setError('');
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) { setError('Geef het product een naam.'); return; }
     setSaving(true);
     try {
-      await onSave({ name: name.trim(), imageUrl: imageUrl.trim(), unit, centralCategoryId, imageFile });
+      await onSave({ name: name.trim(), imageUrl, unit, centralCategoryId, imageFile });
     } catch (err) {
       setError('Opslaan mislukt: ' + err.message);
       setSaving(false);
@@ -874,6 +885,44 @@ function CentralProductForm({ product, centralCategories, onSave, onClose }) {
           <button style={styles.closeButton} onClick={onClose}>✕</button>
         </div>
         <form onSubmit={handleSubmit} style={styles.form}>
+
+          {/* Klikbaar upload-vak */}
+          <div style={styles.imageUploadArea} onClick={() => fileInputRef.current.click()}>
+            {imagePreview ? (
+              <img src={imagePreview} alt="Voorvertoning" style={styles.imagePreview}
+                onError={e => e.target.style.display = 'none'} referrerPolicy="no-referrer" />
+            ) : (
+              <div style={styles.imagePlaceholder}>
+                <span style={{ fontSize: '2.5rem' }}>📷</span>
+                <span style={styles.imageUploadHint}>Tik om een foto te kiezen (optioneel)</span>
+              </div>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*"
+              onChange={handleImageChange} style={{ display: 'none' }} />
+          </div>
+
+          {/* Handmatige URL */}
+          <div style={styles.field}>
+            <label style={styles.label}>Of plak een afbeelding-URL</label>
+            <div style={styles.importRow}>
+              <input type="url" value={manualImageUrl}
+                onChange={e => setManualImageUrl(e.target.value)}
+                style={{ ...styles.input, flex: 1, fontSize: '0.85rem' }}
+                placeholder="https://..." />
+              <button type="button"
+                disabled={!manualImageUrl.trim()}
+                style={{ ...styles.importButton, opacity: !manualImageUrl.trim() ? 0.6 : 1 }}
+                onClick={() => {
+                  setImageUrl(manualImageUrl.trim());
+                  setImagePreview(manualImageUrl.trim());
+                  setImageFile(null);
+                  setManualImageUrl('');
+                }}>
+                ↓ Gebruik
+              </button>
+            </div>
+          </div>
+
           <div style={styles.field}>
             <label style={styles.label}>Naam</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
@@ -894,25 +943,7 @@ function CentralProductForm({ product, centralCategories, onSave, onClose }) {
               ))}
             </select>
           </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Afbeelding — URL</label>
-            <input type="text" value={imageUrl}
-              onChange={e => { setImageUrl(e.target.value); setImageFile(null); }}
-              style={styles.input} placeholder="https://..." />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>of upload een afbeelding</label>
-            <input type="file" accept="image/*"
-              onChange={e => { setImageFile(e.target.files[0] || null); setImageUrl(''); }}
-              style={{ fontSize: '0.875rem' }} />
-          </div>
-          {previewUrl && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-              <img src={previewUrl} alt="" referrerPolicy="no-referrer"
-                style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: '6px' }} />
-              <span style={{ fontSize: '0.8rem', color: '#888' }}>Voorbeeld</span>
-            </div>
-          )}
+
           {error && <p style={styles.errorText}>{error}</p>}
           <button type="submit" disabled={saving}
             style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
@@ -1033,6 +1064,12 @@ const styles = {
   approveButton: { padding: '0.35rem 0.65rem', backgroundColor: '#E8F5E9', color: '#2E7D32', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
   rejectButton: { padding: '0.35rem 0.65rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
   radioLabel: { display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#444', cursor: 'pointer' },
+  imageUploadArea: { width: '100%', height: '180px', borderRadius: '12px', border: '2px dashed #ddd', backgroundColor: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden' },
+  imagePreview: { width: '100%', height: '100%', objectFit: 'cover' },
+  imagePlaceholder: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' },
+  imageUploadHint: { fontSize: '0.85rem', color: '#aaa' },
+  importRow: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
+  importButton: { padding: '0.75rem 0.875rem', backgroundColor: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
   centered: { display: 'flex', justifyContent: 'center', paddingTop: '3rem' },
   hint: { color: '#aaa', fontSize: '0.95rem', margin: 0 },
   modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
