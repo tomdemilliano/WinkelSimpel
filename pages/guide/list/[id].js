@@ -535,7 +535,7 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState(null);
-  const [gridExpanded, setGridExpanded] = useState(true);
+  const [gridExpanded, setGridExpanded] = useState(false);
 
   useEffect(() => {
     ProductFactory.getAll(orgId).then((snap) => {
@@ -584,40 +584,54 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
 
         {/* Uitklapbaar categorieraster */}
         {filterCategories.length > 0 && (
-          gridExpanded ? (
-            <div style={styles.categoryGrid}>
-              {filterCategories.map(cat => (
-                <button
-                  key={cat.id}
-                  style={{
-                    ...styles.categoryGridTile,
-                    ...(activeCategoryId === cat.id ? styles.categoryGridTileActive : {}),
-                  }}
-                  onClick={() => { setActiveCategoryId(cat.id); setGridExpanded(false); }}
-                >
-                  <div style={{ ...styles.categoryGridIconBox, backgroundColor: (cat.color || '#4CAF50') + '33' }}>
-                    {cat.iconUrl
-                      ? <img src={cat.iconUrl} alt="" style={styles.categoryGridIcon} referrerPolicy="no-referrer" />
-                      : <span style={{ fontSize: '1.75rem' }}>🏷️</span>}
-                  </div>
-                  <span style={styles.categoryGridLabel}>{cat.name}</span>
+          <>
+            {/* Ingeklapt: toggle-knop of actieve pill */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '0.5rem', flexShrink: 0 }}>
+              {activeCat ? (
+                <>
+                  <button style={styles.activeFilterChip} onClick={() => setGridExpanded(v => !v)}>
+                    {activeCat.iconUrl && (
+                      <img src={activeCat.iconUrl} alt="" style={styles.activeFilterChipIcon} referrerPolicy="no-referrer" />
+                    )}
+                    <span>{activeCat.name}</span>
+                    <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{gridExpanded ? '▲' : '▼'}</span>
+                  </button>
+                  <button style={styles.activeFilterChipClose}
+                    onClick={() => { setActiveCategoryId(null); setGridExpanded(false); }}>
+                    ×
+                  </button>
+                </>
+              ) : (
+                <button style={styles.categoryToggleButton} onClick={() => setGridExpanded(v => !v)}>
+                  <span>Filter op categorie</span>
+                  <span style={{ fontSize: '0.75rem' }}>{gridExpanded ? '▲' : '▼'}</span>
                 </button>
-              ))}
+              )}
             </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '0.6rem', flexShrink: 0 }}>
-              <button style={styles.activeFilterChip} onClick={() => setGridExpanded(true)}>
-                {activeCat?.iconUrl && (
-                  <img src={activeCat.iconUrl} alt="" style={styles.activeFilterChipIcon} referrerPolicy="no-referrer" />
-                )}
-                <span>{activeCat?.name}</span>
-              </button>
-              <button style={styles.activeFilterChipClose}
-                onClick={() => { setActiveCategoryId(null); setGridExpanded(true); }}>
-                ×
-              </button>
-            </div>
-          )
+
+            {/* Uitgebreid raster */}
+            {gridExpanded && (
+              <div style={styles.categoryGrid}>
+                {filterCategories.map(cat => (
+                  <button
+                    key={cat.id}
+                    style={{
+                      ...styles.categoryGridTile,
+                      ...(activeCategoryId === cat.id ? styles.categoryGridTileActive : {}),
+                    }}
+                    onClick={() => { setActiveCategoryId(cat.id); setGridExpanded(false); }}
+                  >
+                    <div style={{ ...styles.categoryGridIconBox, backgroundColor: (cat.color || '#4CAF50') + '33' }}>
+                      {cat.iconUrl
+                        ? <img src={cat.iconUrl} alt="" style={styles.categoryGridIcon} referrerPolicy="no-referrer" />
+                        : <span style={{ fontSize: '1.75rem' }}>🏷️</span>}
+                    </div>
+                    <span style={styles.categoryGridLabel}>{cat.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Scrollbare productlijst */}
@@ -1291,6 +1305,7 @@ const styles = {
   categoryGridIconBox: { width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   categoryGridIcon: { width: '60%', height: '60%', objectFit: 'contain' },
   categoryGridLabel: { width: '100%', padding: '0.3rem 0.25rem', fontSize: '0.72rem', fontWeight: '600', color: '#444', textAlign: 'center', lineHeight: 1.2, backgroundColor: '#fff' },
+  categoryToggleButton: { display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', borderRadius: '20px', border: '1.5px solid #ddd', backgroundColor: '#f5f5f5', cursor: 'pointer', fontSize: '0.875rem', fontWeight: '600', color: '#666' },
   activeFilterChip: { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.875rem', borderRadius: '20px', border: '1.5px solid #4CAF50', backgroundColor: '#E8F5E9', cursor: 'pointer', fontSize: '0.875rem', fontWeight: '600', color: '#2E7D32' },
   activeFilterChipIcon: { width: '18px', height: '18px', objectFit: 'contain', flexShrink: 0 },
   activeFilterChipClose: { width: '32px', height: '32px', borderRadius: '50%', border: '1.5px solid #ddd', backgroundColor: '#f5f5f5', cursor: 'pointer', fontSize: '1.1rem', color: '#666', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
