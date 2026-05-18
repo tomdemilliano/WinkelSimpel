@@ -333,6 +333,7 @@ function ListDetail({ claims }) {
               index={index}
               total={items.length}
               isEditable={isEditable}
+              categories={categories}
               onQuantityChange={(qty) => handleQuantityChange(item.id, qty)}
               onRemove={() => handleRemoveItem(item.id)}
               onMoveUp={() => handleMove(index, -1)}
@@ -414,6 +415,7 @@ function ListDetail({ claims }) {
         <ProductPicker
           orgId={orgId}
           existingProductIds={items.map((i) => i.productId)}
+          categories={categories}
           onAdd={handleAddProducts}
           onClose={() => setShowProductPicker(false)}
         />
@@ -440,7 +442,11 @@ function ListDetail({ claims }) {
 // ---------------------------------------------------------------------------
 // ItemRow
 // ---------------------------------------------------------------------------
-function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, onMoveUp, onMoveDown }) {
+function ItemRow({ item, index, total, isEditable, categories, onQuantityChange, onRemove, onMoveUp, onMoveDown }) {
+  // Gebruik snapshot als beschikbaar, anders live opzoeken
+  const categoryName = item.categoryName || categories[item.categoryId]?.name || null;
+  const categoryIconUrl = item.categoryIconUrl || categories[item.categoryId]?.iconUrl || null;
+
   return (
     <div style={styles.itemRow}>
       {/* Image */}
@@ -466,12 +472,12 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
             <span style={styles.itemStoreName}>{item.storeName}</span>
           </div>
         )}
-        {item.categoryName && (
+        {categoryName && (
           <div style={styles.itemCategoryBadge}>
-            {item.categoryIconUrl && (
-              <img src={item.categoryIconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
+            {categoryIconUrl && (
+              <img src={categoryIconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
             )}
-            <span style={styles.itemCategoryLabel}>{item.categoryName}</span>
+            <span style={styles.itemCategoryLabel}>{categoryName}</span>
           </div>
         )}
         {item.checked && <p style={styles.itemChecked}>✓ Genomen</p>}
@@ -523,11 +529,12 @@ function StatusBadge({ status }) {
 // ---------------------------------------------------------------------------
 // ProductPicker (modal)
 // ---------------------------------------------------------------------------
-function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
+function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }) {
   const [products, setProducts] = useState([]);
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [activeCategoryId, setActiveCategoryId] = useState(null); // null = alles
 
   useEffect(() => {
     ProductFactory.getAll(orgId).then((snap) => {
@@ -544,11 +551,16 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
     );
   }
 
-  const filtered = products.filter(
-    (p) =>
-      !existingProductIds.includes(p.id) &&
-      p.name.toLowerCase().includes(search.toLowerCase())
-  );
+  // Categorieën die minstens één product hebben (excl. al toegevoegde)
+  const availableProducts = products.filter(p => !existingProductIds.includes(p.id));
+  const usedCategoryIds = new Set(availableProducts.map(p => p.categoryId).filter(Boolean));
+  const filterCategories = Object.values(categories).filter(c => usedCategoryIds.has(c.id));
+
+  const filtered = availableProducts.filter((p) => {
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
+    const matchesCategory = !activeCategoryId || p.categoryId === activeCategoryId;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
@@ -563,21 +575,50 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
           placeholder="Zoeken..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ ...styles.searchInput, marginBottom: '0.75rem', flexShrink: 0 }}
+          style={{ ...styles.searchInput, marginBottom: '0.5rem', flexShrink: 0 }}
         />
 
-        {/* Scrollbare lijst met vaste hoogte */}
+        {/* Visuele categoriefilterbalk */}
+        {filterCategories.length > 0 && (
+          <div style={styles.categoryFilterRow}>
+            <button
+              style={{ ...styles.categoryChip, ...(activeCategoryId === null ? styles.categoryChipActive : {}) }}
+              onClick={() => setActiveCategoryId(null)}
+            >
+              <span style={styles.categoryChipLabel}>Alles</span>
+            </button>
+            {filterCategories.map(cat => (
+              <button
+                key={cat.id}
+                style={{
+                  ...styles.categoryChip,
+                  ...(activeCategoryId === cat.id ? styles.categoryChipActive : {}),
+                  ...(activeCategoryId === cat.id && cat.color ? { borderColor: cat.color, backgroundColor: cat.color + '22' } : {}),
+                }}
+                onClick={() => setActiveCategoryId(prev => prev === cat.id ? null : cat.id)}
+              >
+                {cat.iconUrl && (
+                  <img src={cat.iconUrl} alt="" style={styles.categoryChipIcon} referrerPolicy="no-referrer" />
+                )}
+                <span style={styles.categoryChipLabel}>{cat.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Scrollbare productlijst */}
         <div style={styles.pickerScrollArea}>
           {loading ? (
             <p style={styles.hint}>Laden...</p>
           ) : filtered.length === 0 ? (
             <p style={styles.hint}>
-              {search ? 'Geen producten gevonden.' : 'Alle producten zijn al toegevoegd.'}
+              {search || activeCategoryId ? 'Geen producten gevonden.' : 'Alle producten zijn al toegevoegd.'}
             </p>
           ) : (
             <div style={styles.pickerList}>
               {filtered.map((product) => {
                 const isSelected = !!selected.find((p) => p.id === product.id);
+                const category = product.categoryId ? categories[product.categoryId] : null;
                 return (
                   <div
                     key={product.id}
@@ -595,7 +636,17 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
                         <div style={styles.itemImagePlaceholder}>🛍️</div>
                       )}
                     </div>
-                    <p style={styles.pickerName}>{product.name}</p>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={styles.pickerName}>{product.name}</p>
+                      {category && (
+                        <div style={styles.itemCategoryBadge}>
+                          {category.iconUrl && (
+                            <img src={category.iconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
+                          )}
+                          <span style={styles.itemCategoryLabel}>{category.name}</span>
+                        </div>
+                      )}
+                    </div>
                     <div style={{
                       ...styles.checkbox,
                       backgroundColor: isSelected ? '#4CAF50' : '#fff',
@@ -1220,6 +1271,11 @@ const styles = {
   itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem', marginTop: '0.2rem' },
   itemCategoryIcon: { width: '14px', height: '14px', objectFit: 'contain', flexShrink: 0 },
   itemCategoryLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
+  categoryFilterRow: { display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.6rem', flexShrink: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' },
+  categoryChip: { display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.45rem 0.75rem', borderRadius: '20px', border: '1.5px solid #eee', backgroundColor: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontSize: '0.85rem' },
+  categoryChipActive: { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' },
+  categoryChipIcon: { width: '20px', height: '20px', objectFit: 'contain', flexShrink: 0 },
+  categoryChipLabel: { fontSize: '0.82rem', fontWeight: '600', color: '#444' },
   assignedLabelButton: {
   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
