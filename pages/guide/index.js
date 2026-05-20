@@ -104,9 +104,17 @@ function GuideDashboard({ claims }) {
           <h1 style={styles.appTitle}>Winkel Simpel</h1>
           <p style={styles.appSubtitle}>Begeleidersdashboard</p>
         </div>
-        <button style={styles.signOutButton} onClick={handleSignOut}>
-          Afmelden
-        </button>
+        <div style={styles.headerActions}>
+          <button style={styles.iconButton} onClick={() => router.push('/guide/account')} aria-label="Account instellingen">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+          </button>
+          <button style={styles.signOutButton} onClick={handleSignOut}>
+            Afmelden
+          </button>
+        </div>
       </div>
 
       <div style={styles.content}>
@@ -205,6 +213,25 @@ const styles = {
     color: 'rgba(255,255,255,0.75)',
     margin: 0,
     fontWeight: '600',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  iconButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '36px',
+    height: '36px',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    border: '1.5px solid rgba(255,255,255,0.4)',
+    borderRadius: '50%',
+    color: '#fff',
+    cursor: 'pointer',
+    padding: 0,
+    fontFamily: 'inherit',
   },
   signOutButton: {
     padding: '0.45rem 1rem',
