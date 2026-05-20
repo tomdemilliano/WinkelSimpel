@@ -425,23 +425,54 @@ function CheckIcon({ size = 60, color = '#4CAF50' }) {
 }
 
 // ---- Completion screen ----
+function CelebrationIllustration() {
+  return (
+    <svg width="140" height="140" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Basket body */}
+      <rect x="30" y="62" width="80" height="50" rx="10" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.8)" strokeWidth="3"/>
+      {/* Basket handle */}
+      <path d="M50 62 Q50 36 70 36 Q90 36 90 62" stroke="rgba(255,255,255,0.8)" strokeWidth="3" fill="none" strokeLinecap="round"/>
+      {/* Basket weave lines */}
+      <line x1="30" y1="78" x2="110" y2="78" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
+      <line x1="30" y1="94" x2="110" y2="94" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
+      <line x1="55" y1="62" x2="55" y2="112" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/>
+      <line x1="85" y1="62" x2="85" y2="112" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/>
+      {/* Checkmark circle */}
+      <circle cx="98" cy="56" r="22" fill="#3A7FC1" stroke="rgba(255,255,255,0.9)" strokeWidth="3"/>
+      <polyline points="88,56 96,64 110,48" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      {/* Sparkles */}
+      <line x1="20" y1="28" x2="20" y2="40" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="14" y1="34" x2="26" y2="34" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="118" y1="20" x2="118" y2="30" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="113" y1="25" x2="123" y2="25" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="28" cy="105" r="4" fill="rgba(255,255,255,0.3)"/>
+      <circle cx="115" cy="90" r="3" fill="rgba(255,255,255,0.25)"/>
+      <circle cx="40" cy="22" r="3" fill="rgba(255,255,255,0.35)"/>
+    </svg>
+  );
+}
+
+function StarIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 4l2.94 8.26H28l-7.27 5.48 2.77 8.26L16 21.01l-7.5 5L11.27 17.74 4 12.26h9.06z" fill="rgba(255,255,255,0.9)" stroke="rgba(255,255,255,0.5)" strokeWidth="1"/>
+    </svg>
+  );
+}
+
 function CompletionScreen({ firstName }) {
   const messages = ['Super gedaan!', 'Geweldig!', 'Fantastisch!', 'Goed bezig!', 'Wauw, perfect!'];
-  const emojis = ['🎉', '⭐', '🏆', '🎊', '👏', '🌟'];
   const msg = messages[Math.floor(Math.random() * messages.length)];
-  const e1 = emojis[Math.floor(Math.random() * emojis.length)];
-  const e2 = emojis[Math.floor(Math.random() * emojis.length)];
   return (
     <div style={styles.completionScreen}>
       <div style={styles.completionContent}>
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
-          <span style={{ fontSize: '5rem' }}>{e1}</span>
-          <span style={{ fontSize: '5rem' }}>{e2}</span>
-        </div>
+        <CelebrationIllustration />
         <p style={styles.completionMessage}>{msg}</p>
         {firstName && <p style={styles.completionName}>{firstName}</p>}
         <p style={styles.completionSub}>Alle boodschappen zijn gedaan!</p>
-        <div style={{ fontSize: '2.5rem', marginTop: '0.5rem' }}>{'⭐'.repeat(5)}</div>
+        <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
+          {[1,2,3,4,5].map(i => <StarIcon key={i} />)}
+        </div>
       </div>
     </div>
   );
@@ -513,7 +544,7 @@ const styles = {
   overviewItemQty: { fontSize: '0.8rem', color: '#4CAF50', fontWeight: '600', margin: 0 },
 
   // Completion
-  completionScreen: { position: 'fixed', inset: 0, backgroundColor: '#4CAF50', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' },
+  completionScreen: { position: 'fixed', inset: 0, background: 'linear-gradient(160deg, #5B9BD5 0%, #3A7FC1 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Nunito', system-ui, sans-serif" },
   completionContent: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem', textAlign: 'center' },
   completionMessage: { fontSize: '3rem', fontWeight: '900', color: '#fff', margin: 0, lineHeight: 1.1 },
   completionName: { fontSize: '2rem', fontWeight: '800', color: 'rgba(255,255,255,0.9)', margin: 0 },
