@@ -13,7 +13,7 @@ import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, P
 
 function AdminDashboard({ claims }) {
   const router = useRouter();
-  const [tab, setTab] = useState('orgs'); // 'orgs' | 'library'
+  const [tab, setTab] = useState('orgs'); // 'orgs' | 'library' | 'stores' | 'accounts'
 
   async function handleSignOut() {
     await signOut();
@@ -42,11 +42,15 @@ function AdminDashboard({ claims }) {
         <button style={{ ...styles.tab, ...(tab === 'stores' ? styles.tabActive : {}) }} onClick={() => setTab('stores')}>
           Winkels
         </button>
+        <button style={{ ...styles.tab, ...(tab === 'accounts' ? styles.tabActive : {}) }} onClick={() => setTab('accounts')}>
+          Accounts
+        </button>
       </div>
 
       {tab === 'orgs' && <OrgsTab claims={claims} router={router} />}
       {tab === 'library' && <LibraryTab claims={claims} />}
       {tab === 'stores' && <StoresTab claims={claims} />}
+      {tab === 'accounts' && <AccountsTab claims={claims} />}
     </div>
   );
 }
@@ -1016,6 +1020,87 @@ function NewOrgForm({ claims, onSave, onClose }) {
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AccountsTab
+// ---------------------------------------------------------------------------
+function AccountsTab({ claims }) {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null); // { success, message }
+
+  async function handleReset(e) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    if (!confirm(`Gebruiker "${email.trim()}" terugzetten naar privé-status? De gebruiker wordt direct uitgelogd.`)) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const { auth } = await import('../../lib/firebase');
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/admin/reset-user-to-private', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResult({ success: false, message: data.message || 'Er is een fout opgetreden.' });
+      } else {
+        setResult({ success: true, message: `Gebruiker is teruggezet naar privé-status${data.restoredOrgId ? ' en privé-organisatie hersteld' : ''}.` });
+        setEmail('');
+      }
+    } catch {
+      setResult({ success: false, message: 'Er is een fout opgetreden.' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Account terugzetten naar privé</p>
+      </div>
+      <p style={{ fontSize: '0.875rem', color: '#888', marginBottom: '1rem', lineHeight: 1.5 }}>
+        Gebruik dit wanneer een gebruiker onterecht aan een organisatie is gekoppeld.
+        De organisatiekoppeling en claims worden gereset; de gebruiker wordt direct uitgelogd.
+      </p>
+      <form onSubmit={handleReset} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '400px' }}>
+        <div style={styles.field}>
+          <label style={styles.label}>E-mailadres van de gebruiker</label>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            style={styles.input}
+            placeholder="gebruiker@voorbeeld.be"
+            required
+          />
+        </div>
+        {result && (
+          <p style={{
+            fontSize: '0.875rem',
+            margin: 0,
+            padding: '0.6rem 0.875rem',
+            borderRadius: '8px',
+            backgroundColor: result.success ? '#E8F5E9' : '#FDECEA',
+            color: result.success ? '#2E7D32' : '#C62828',
+          }}>
+            {result.message}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={loading}
+          style={{ ...styles.addButton, alignSelf: 'flex-start', opacity: loading ? 0.6 : 1 }}
+        >
+          {loading ? 'Bezig...' : 'Terugzetten naar privé'}
+        </button>
+      </form>
     </div>
   );
 }
