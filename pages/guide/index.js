@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { ShoppingListFactory } from '../../lib/dbSchema';
+import { ShoppingListFactory, AccessRequestFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // SVG-illustraties voor dashboard-tegels
@@ -64,6 +64,7 @@ function BeheerIllustration() {
 function GuideDashboard({ claims }) {
   const router = useRouter();
   const [listCounts, setListCounts] = useState(null);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
   useEffect(() => {
     ShoppingListFactory.getAll(claims.orgId).then(snap => {
@@ -74,6 +75,13 @@ function GuideDashboard({ claims }) {
       });
     });
   }, [claims.orgId]);
+
+  useEffect(() => {
+    if (claims.role !== ROLES.ORG_ADMIN) return;
+    AccessRequestFactory.getByOrg(claims.orgId).then(snap => {
+      setPendingRequestCount(snap.docs.filter(d => d.data().status === 'pending').length);
+    }).catch(() => {});
+  }, [claims.orgId, claims.role]);
 
   async function handleSignOut() {
     await signOut();
@@ -102,6 +110,19 @@ function GuideDashboard({ claims }) {
       </div>
 
       <div style={styles.content}>
+        {/* Toegangsverzoeken melding (alleen org_admin) */}
+        {pendingRequestCount > 0 && (
+          <button style={styles.requestBanner} onClick={() => router.push('/guide/access-requests')}>
+            <span style={styles.requestBannerDot} />
+            <span style={styles.requestBannerText}>
+              {pendingRequestCount === 1
+                ? '1 openstaand toegangsverzoek'
+                : `${pendingRequestCount} openstaande toegangsverzoeken`}
+            </span>
+            <span style={styles.requestBannerArrow}>›</span>
+          </button>
+        )}
+
         {/* Primaire tegels */}
         <div style={styles.primaryGrid}>
           <button style={styles.primaryTile} onClick={() => router.push('/guide/lists')}>
@@ -291,6 +312,39 @@ const styles = {
     fontSize: '0.78rem',
     color: '#6B7E91',
     fontWeight: '600',
+  },
+  requestBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    width: '100%',
+    padding: '0.875rem 1rem',
+    backgroundColor: '#FFF8E7',
+    border: '1.5px solid #FFD54F',
+    borderRadius: '14px',
+    cursor: 'pointer',
+    marginBottom: '0.875rem',
+    fontFamily: 'inherit',
+    textAlign: 'left',
+  },
+  requestBannerDot: {
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+    backgroundColor: '#F59E0B',
+    flexShrink: 0,
+  },
+  requestBannerText: {
+    flex: 1,
+    fontSize: '0.9rem',
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  requestBannerArrow: {
+    fontSize: '1.3rem',
+    color: '#F59E0B',
+    fontWeight: '700',
+    flexShrink: 0,
   },
   footer: {
     textAlign: 'center',
