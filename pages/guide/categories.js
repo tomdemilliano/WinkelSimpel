@@ -126,7 +126,7 @@ function CategoriesPage({ claims }) {
   return (
     <div style={styles.page}>
       <div style={styles.header}>
-        <button style={styles.backButton} onClick={() => router.push('/guide')}>
+        <button style={styles.backButton} onClick={() => router.push('/guide/beheer')}>
           ← Terug
         </button>
         <h1 style={styles.title}>Categorieën</h1>

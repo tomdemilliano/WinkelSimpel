@@ -126,7 +126,7 @@ function StoreLibrary({ claims }) {
     <div style={styles.page}>
       {/* Header */}
       <div style={styles.header}>
-        <button style={styles.backButton} onClick={() => router.push('/guide')}>
+        <button style={styles.backButton} onClick={() => router.push('/guide/beheer')}>
           ← Terug
         </button>
         <h1 style={styles.title}>Winkels</h1>
