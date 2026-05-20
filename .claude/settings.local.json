@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -E \"\\\\.js$\")"
+      "Bash(grep -E \"\\\\.js$\")",
+      "Bash(grep -r \"#[0-9A-Fa-f]\\\\{3,6\\\\}\" --include=\"*.js\" --include=\"*.css\")",
+      "Bash(grep -roh \"#[0-9A-Fa-f]\\\\{3,6\\\\}\" --include=\"*.js\" --include=\"*.css\")"
     ]
   }
 }

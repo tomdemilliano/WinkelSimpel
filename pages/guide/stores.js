@@ -466,11 +466,11 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], StoreLibrary);
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' },
-  backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#4CAF50', cursor: 'pointer', padding: '0.25rem 0', fontWeight: '600' },
-  title: { fontSize: '1.2rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
-  addButton: { padding: '0.5rem 1rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' },
+  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1rem -1.5rem', padding: '1.25rem 1.5rem' },
+  backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#fff', cursor: 'pointer', padding: '0.25rem 0', fontWeight: '700', fontFamily: 'inherit' },
+  title: { fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 },
+  addButton: { padding: '0.45rem 1rem', backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.5)', borderRadius: '20px', fontSize: '0.875rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
   filterRow: { display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' },
   filterChip: { padding: '0.35rem 0.875rem', backgroundColor: '#f0f0f0', border: 'none', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '600', color: '#888', cursor: 'pointer' },
   filterChipActive: { backgroundColor: '#1a1a1a', color: '#fff' },

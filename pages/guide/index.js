@@ -3,6 +3,64 @@ import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
 import { ShoppingListFactory } from '../../lib/dbSchema';
 
+// ---------------------------------------------------------------------------
+// SVG-illustraties voor dashboard-tegels
+// ---------------------------------------------------------------------------
+function ListsIllustration() {
+  return (
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="6" width="36" height="44" rx="5" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="2"/>
+      <rect x="20" y="2" width="16" height="8" rx="3" fill="#5B9BD5"/>
+      <line x1="18" y1="22" x2="38" y2="22" stroke="#D0E8FA" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="18" y1="30" x2="38" y2="30" stroke="#D0E8FA" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="18" y1="38" x2="30" y2="38" stroke="#D0E8FA" strokeWidth="2.5" strokeLinecap="round"/>
+      <circle cx="14" cy="22" r="3" fill="#4CAF50"/>
+      <path d="M12.5 22l1 1 2-2" stroke="#fff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="14" cy="30" r="3" fill="#4CAF50"/>
+      <path d="M12.5 30l1 1 2-2" stroke="#fff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="14" cy="38" r="3" fill="#D0E8FA" stroke="#5B9BD5" strokeWidth="1.2"/>
+    </svg>
+  );
+}
+
+function LibraryIllustration() {
+  return (
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10 22h36l-4 24H14L10 22z" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="2" strokeLinejoin="round"/>
+      <path d="M6 22h44" stroke="#5B9BD5" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M20 22V16a8 8 0 0116 0v6" stroke="#5B9BD5" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="22" cy="34" r="3.5" fill="#4CAF50"/>
+      <circle cx="34" cy="34" r="3.5" fill="#FF9800"/>
+      <path d="M26 38h4" stroke="#5B9BD5" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function GroupsIllustration() {
+  return (
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="18" cy="16" r="7" fill="#D0E8FA" stroke="#5B9BD5" strokeWidth="2"/>
+      <path d="M4 38c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="#5B9BD5" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="34" cy="14" r="5.5" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="1.5"/>
+      <path d="M30 36c0-5.523 3.134-10 7-10s7 4.477 7 10" stroke="#5B9BD5" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function BeheerIllustration() {
+  return (
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="24" cy="24" r="8" fill="#EBF4FF" stroke="#6B7E91" strokeWidth="2"/>
+      <circle cx="24" cy="24" r="3" fill="#6B7E91"/>
+      <path d="M24 6v6M24 36v6M6 24h6M36 24h6" stroke="#6B7E91" strokeWidth="2.5" strokeLinecap="round"/>
+      <path d="M11.5 11.5l4.2 4.2M32.3 32.3l4.2 4.2M11.5 36.5l4.2-4.2M32.3 15.7l4.2-4.2" stroke="#6B7E91" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GuideDashboard
+// ---------------------------------------------------------------------------
 function GuideDashboard({ claims }) {
   const router = useRouter();
   const [listCounts, setListCounts] = useState(null);
@@ -30,96 +88,71 @@ function GuideDashboard({ claims }) {
     return parts.length > 0 ? parts.join(' · ') : null;
   }
 
-  const primaryTiles = [
-    {
-      icon: '📋',
-      label: 'Boodschappenlijstjes',
-      description: 'Lijstjes aanmaken en toewijzen',
-      badge: listsBadgeText(),
-      href: '/guide/lists',
-      color: '#E3F2FD',
-      borderColor: '#90CAF9',
-    },
-    {
-      icon: '🛍️',
-      label: 'Productbibliotheek',
-      description: 'Producten toevoegen en beheren',
-      badge: null,
-      href: '/guide/library',
-      color: '#E8F5E9',
-      borderColor: '#A5D6A7',
-    },
-  ];
-
-  const secondaryTiles = [
-    {
-      icon: '👥',
-      label: 'Groepen & leden',
-      description: 'Shoppers en groepen beheren',
-      href: '/guide/groups',
-      color: '#FFF3E0',
-      borderColor: '#FFCC80',
-    },
-    {
-      icon: '⚙️',
-      label: 'Beheer',
-      description: 'Winkels en categorieën',
-      href: '/guide/beheer',
-      color: '#F5F5F5',
-      borderColor: '#E0E0E0',
-    },
-  ];
-
   return (
     <div style={styles.page}>
-      <div style={styles.header}>
+      {/* Blauwe gradient header */}
+      <div style={styles.headerBand}>
         <div>
-          <h1 style={styles.title}>Winkel Simpel</h1>
-          <p style={styles.subtitle}>Begeleidersdashboard</p>
+          <h1 style={styles.appTitle}>Winkel Simpel</h1>
+          <p style={styles.appSubtitle}>Begeleidersdashboard</p>
         </div>
         <button style={styles.signOutButton} onClick={handleSignOut}>
           Afmelden
         </button>
       </div>
 
-      <div style={styles.primaryGrid}>
-        {primaryTiles.map((tile) => (
-          <button
-            key={tile.href}
-            style={{ ...styles.primaryTile, backgroundColor: tile.color, borderColor: tile.borderColor }}
-            onClick={() => router.push(tile.href)}
-          >
-            <span style={styles.primaryTileIcon}>{tile.icon}</span>
-            <span style={styles.primaryTileLabel}>{tile.label}</span>
-            <span style={styles.primaryTileDescription}>{tile.description}</span>
-            {tile.badge && (
-              <span style={styles.listBadge}>{tile.badge}</span>
-            )}
+      <div style={styles.content}>
+        {/* Primaire tegels */}
+        <div style={styles.primaryGrid}>
+          <button style={styles.primaryTile} onClick={() => router.push('/guide/lists')}>
+            <div style={styles.primaryTileIllustration}>
+              <ListsIllustration />
+            </div>
+            <div style={styles.primaryTileText}>
+              <span style={styles.primaryTileLabel}>Boodschappenlijstjes</span>
+              <span style={styles.primaryTileDescription}>Lijstjes aanmaken en toewijzen</span>
+              {listsBadgeText() && (
+                <span style={styles.listBadge}>{listsBadgeText()}</span>
+              )}
+            </div>
+            <span style={styles.primaryTileArrow}>›</span>
           </button>
-        ))}
-      </div>
 
-      <div style={styles.secondaryGrid}>
-        {secondaryTiles.map((tile) => (
-          <button
-            key={tile.href}
-            style={{ ...styles.secondaryTile, backgroundColor: tile.color, borderColor: tile.borderColor }}
-            onClick={() => router.push(tile.href)}
-          >
-            <span style={styles.secondaryTileIcon}>{tile.icon}</span>
-            <span style={styles.secondaryTileLabel}>{tile.label}</span>
-            <span style={styles.secondaryTileDescription}>{tile.description}</span>
-          </button>
-        ))}
-      </div>
-
-      {claims.orgType === 'private' && (
-        <div style={styles.footer}>
-          <button style={styles.footerLink} onClick={() => router.push('/guide/request-access')}>
-            🏢 Aansluiten bij organisatie
+          <button style={styles.primaryTile} onClick={() => router.push('/guide/library')}>
+            <div style={styles.primaryTileIllustration}>
+              <LibraryIllustration />
+            </div>
+            <div style={styles.primaryTileText}>
+              <span style={styles.primaryTileLabel}>Productbibliotheek</span>
+              <span style={styles.primaryTileDescription}>Producten toevoegen en beheren</span>
+            </div>
+            <span style={styles.primaryTileArrow}>›</span>
           </button>
         </div>
-      )}
+
+        {/* Secundaire tegels */}
+        <div style={styles.secondaryGrid}>
+          <button style={styles.secondaryTile} onClick={() => router.push('/guide/groups')}>
+            <GroupsIllustration />
+            <span style={styles.secondaryTileLabel}>Groepen & leden</span>
+            <span style={styles.secondaryTileDescription}>Shoppers beheren</span>
+          </button>
+
+          <button style={styles.secondaryTile} onClick={() => router.push('/guide/beheer')}>
+            <BeheerIllustration />
+            <span style={styles.secondaryTileLabel}>Beheer</span>
+            <span style={styles.secondaryTileDescription}>Winkels & categorieën</span>
+          </button>
+        </div>
+
+        {claims.orgType === 'private' && (
+          <div style={styles.footer}>
+            <button style={styles.footerLink} onClick={() => router.push('/guide/request-access')}>
+              🏢 Aansluiten bij organisatie
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -127,25 +160,149 @@ function GuideDashboard({ claims }) {
 export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GuideDashboard);
 
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' },
-  title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.2rem' },
-  subtitle: { fontSize: '0.875rem', color: '#888', margin: 0 },
-  signOutButton: { padding: '0.5rem 1rem', backgroundColor: 'transparent', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.875rem', color: '#666', cursor: 'pointer' },
-
-  primaryGrid: { display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' },
-  primaryTile: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '1.5rem', borderRadius: '14px', border: '1.5px solid', cursor: 'pointer', textAlign: 'left', gap: '0.3rem' },
-  primaryTileIcon: { fontSize: '2.5rem', marginBottom: '0.3rem' },
-  primaryTileLabel: { fontSize: '1.15rem', fontWeight: '700', color: '#1a1a1a' },
-  primaryTileDescription: { fontSize: '0.875rem', color: '#666' },
-  listBadge: { marginTop: '0.5rem', display: 'inline-block', fontSize: '0.78rem', fontWeight: '600', color: '#1565C0', backgroundColor: '#BBDEFB', borderRadius: '20px', padding: '0.2rem 0.6rem' },
-
-  secondaryGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' },
-  secondaryTile: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '1.1rem', borderRadius: '14px', border: '1.5px solid', cursor: 'pointer', textAlign: 'left', gap: '0.25rem' },
-  secondaryTileIcon: { fontSize: '1.75rem', marginBottom: '0.2rem' },
-  secondaryTileLabel: { fontSize: '0.975rem', fontWeight: '700', color: '#1a1a1a' },
-  secondaryTileDescription: { fontSize: '0.8rem', color: '#888' },
-
-  footer: { textAlign: 'center' },
-  footerLink: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', color: '#9E9E9E', padding: '0.5rem' },
+  page: {
+    minHeight: '100vh',
+    backgroundColor: '#F4F8FC',
+    fontFamily: "'Nunito', system-ui, sans-serif",
+  },
+  headerBand: {
+    background: 'linear-gradient(135deg, #5B9BD5 0%, #3A7FC1 100%)',
+    padding: '1.75rem 1.5rem 2rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  appTitle: {
+    fontSize: '1.75rem',
+    fontWeight: '800',
+    color: '#fff',
+    margin: '0 0 0.2rem',
+    letterSpacing: '-0.3px',
+  },
+  appSubtitle: {
+    fontSize: '0.875rem',
+    color: 'rgba(255,255,255,0.75)',
+    margin: 0,
+    fontWeight: '600',
+  },
+  signOutButton: {
+    padding: '0.45rem 1rem',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    border: '1.5px solid rgba(255,255,255,0.4)',
+    borderRadius: '20px',
+    fontSize: '0.85rem',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontFamily: 'inherit',
+  },
+  content: {
+    padding: '1.25rem 1.25rem 2rem',
+    maxWidth: '600px',
+    margin: '0 auto',
+  },
+  primaryGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.875rem',
+    marginBottom: '0.875rem',
+  },
+  primaryTile: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    padding: '1.25rem',
+    backgroundColor: '#fff',
+    borderRadius: '16px',
+    border: '1.5px solid #D0E8FA',
+    cursor: 'pointer',
+    textAlign: 'left',
+    boxShadow: '0 2px 8px rgba(91,155,213,0.10)',
+    fontFamily: 'inherit',
+  },
+  primaryTileIllustration: {
+    flexShrink: 0,
+    width: '64px',
+    height: '64px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryTileText: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.2rem',
+    minWidth: 0,
+  },
+  primaryTileLabel: {
+    fontSize: '1.05rem',
+    fontWeight: '800',
+    color: '#1A2B3C',
+  },
+  primaryTileDescription: {
+    fontSize: '0.825rem',
+    color: '#6B7E91',
+    fontWeight: '600',
+  },
+  primaryTileArrow: {
+    fontSize: '1.5rem',
+    color: '#D0E8FA',
+    fontWeight: '700',
+    flexShrink: 0,
+  },
+  listBadge: {
+    marginTop: '0.3rem',
+    display: 'inline-block',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#3A7FC1',
+    backgroundColor: '#EBF4FF',
+    borderRadius: '20px',
+    padding: '0.15rem 0.6rem',
+    alignSelf: 'flex-start',
+  },
+  secondaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '0.875rem',
+    marginBottom: '1.5rem',
+  },
+  secondaryTile: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    padding: '1.1rem',
+    backgroundColor: '#fff',
+    borderRadius: '16px',
+    border: '1.5px solid #D8E5EF',
+    cursor: 'pointer',
+    textAlign: 'left',
+    gap: '0.5rem',
+    boxShadow: '0 2px 6px rgba(91,155,213,0.07)',
+    fontFamily: 'inherit',
+  },
+  secondaryTileLabel: {
+    fontSize: '0.95rem',
+    fontWeight: '800',
+    color: '#1A2B3C',
+  },
+  secondaryTileDescription: {
+    fontSize: '0.78rem',
+    color: '#6B7E91',
+    fontWeight: '600',
+  },
+  footer: {
+    textAlign: 'center',
+  },
+  footerLink: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '0.875rem',
+    color: '#9EB3C8',
+    padding: '0.5rem',
+    fontFamily: 'inherit',
+    fontWeight: '600',
+  },
 };

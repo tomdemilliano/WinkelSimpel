@@ -933,13 +933,13 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GroupsAndMembers);
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
-  backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#4CAF50', cursor: 'pointer', fontWeight: '600', padding: '0.25rem 0' },
-  title: { fontSize: '1.2rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
+  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1.25rem -1.5rem', padding: '1.25rem 1.5rem' },
+  backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#fff', cursor: 'pointer', fontWeight: '700', padding: '0.25rem 0', fontFamily: 'inherit' },
+  title: { fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 },
   tabs: { display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '2px solid #eee' },
   tab: { flex: 1, padding: '0.65rem 0.5rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', fontWeight: '600', color: '#aaa', cursor: 'pointer' },
-  tabActive: { color: '#1a1a1a', borderBottomColor: '#4CAF50' },
+  tabActive: { color: '#1A2B3C', borderBottomColor: '#5B9BD5' },
   tabContent: { paddingTop: '0.25rem' },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' },
   sectionTitle: { fontSize: '0.8rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 },
