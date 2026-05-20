@@ -69,7 +69,24 @@ export default async function handler(req, res) {
 
     // Claims resetten en refresh-tokens intrekken zodat de gebruiker direct uitgelogd wordt
     try {
-      await adminAuth.setCustomUserClaims(memberId, { role: null, orgId: null, orgType: null });
+      // Zoek de private org van deze gebruiker (zelfgeregistreerde gebruikers)
+      const privateOrgSnap = await adminDb
+        .collection('organizations')
+        .where('isPrivate', '==', true)
+        .where('createdBy', '==', memberId)
+        .limit(1)
+        .get();
+
+      if (!privateOrgSnap.empty) {
+        await adminAuth.setCustomUserClaims(memberId, {
+          role: 'guide',
+          orgId: privateOrgSnap.docs[0].id,
+          orgType: 'private',
+        });
+      } else {
+        await adminAuth.setCustomUserClaims(memberId, { role: null, orgId: null, orgType: null });
+      }
+
       await adminAuth.revokeRefreshTokens(memberId);
     } catch {
       // Auth-account bestaat mogelijk niet meer (bijv. al eerder verwijderd)
