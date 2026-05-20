@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
-import { MemberFactory, OrganizationFactory } from '../../lib/dbSchema';
+import { MemberFactory } from '../../lib/dbSchema';
 
 function AccountPage({ claims }) {
   const router = useRouter();
@@ -41,8 +41,10 @@ function AccountPage({ claims }) {
       .finally(() => setLoadingProfile(false));
 
     if (orgType === 'organization') {
-      OrganizationFactory.getById(orgId)
-        .then((snap) => { if (snap.exists()) setOrgName(snap.data().name || ''); })
+      user.getIdToken()
+        .then(idToken => fetch('/api/org/get-org-name', { headers: { Authorization: `Bearer ${idToken}` } }))
+        .then(res => res.json())
+        .then(data => { if (data.name) setOrgName(data.name); })
         .catch(() => {});
     }
   }, [orgId, uid, orgType]);

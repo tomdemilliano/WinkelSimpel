@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { ShoppingListFactory, AccessRequestFactory, OrganizationFactory } from '../../lib/dbSchema';
+import { auth } from '../../lib/firebase';
+import { ShoppingListFactory, AccessRequestFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // SVG-illustraties voor dashboard-tegels
@@ -78,11 +79,14 @@ function GuideDashboard({ claims }) {
   }, [claims.orgId]);
 
   useEffect(() => {
-    if (claims.orgType !== 'private') {
-      OrganizationFactory.getById(claims.orgId)
-        .then(snap => { if (snap.exists()) setOrgName(snap.data().name || ''); })
-        .catch(() => {});
-    }
+    if (claims.orgType === 'private') return;
+    const user = auth.currentUser;
+    if (!user) return;
+    user.getIdToken()
+      .then(idToken => fetch('/api/org/get-org-name', { headers: { Authorization: `Bearer ${idToken}` } }))
+      .then(res => res.json())
+      .then(data => { if (data.name) setOrgName(data.name); })
+      .catch(() => {});
   }, [claims.orgId, claims.orgType]);
 
   useEffect(() => {
