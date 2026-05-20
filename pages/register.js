@@ -33,14 +33,14 @@ export default function RegisterPage() {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <p style={styles.logo}>🛒</p>
+          <img src="/icons/icon-192.png" alt="Winkel Simpel" style={styles.logoImg} />
           <h1 style={styles.title}>Winkel Simpel</h1>
           <p style={styles.subtitle}>Maak een account aan</p>
         </div>
         <RegisterForm router={router} />
         <p style={styles.hint}>
           Al een account?{' '}
-          <a href="/login" style={{ color: '#4CAF50', fontWeight: '600', textDecoration: 'none' }}>
+          <a href="/login" style={{ color: '#5B9BD5', fontWeight: '600', textDecoration: 'none' }}>
             Aanmelden
           </a>
         </p>
@@ -179,19 +179,19 @@ function RegisterForm({ router }) {
 }
 
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', fontFamily: 'system-ui, sans-serif' },
-  card: { backgroundColor: '#fff', borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '420px', boxShadow: '0 2px 16px rgba(0,0,0,0.08)' },
+  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', fontFamily: "'Nunito', system-ui, sans-serif" },
+  card: { backgroundColor: '#fff', borderRadius: '20px', padding: '2rem', width: '100%', maxWidth: '420px', boxShadow: '0 4px 24px rgba(91,155,213,0.12)', borderTop: '4px solid #5B9BD5' },
   header: { textAlign: 'center', marginBottom: '2rem' },
-  logo: { fontSize: '3rem', marginBottom: '0.5rem' },
-  title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.25rem' },
-  subtitle: { fontSize: '0.9rem', color: '#888', margin: 0 },
+  logoImg: { width: '72px', height: '72px', borderRadius: '16px', marginBottom: '0.75rem' },
+  title: { fontSize: '1.5rem', fontWeight: '800', color: '#1A2B3C', margin: '0 0 0.25rem' },
+  subtitle: { fontSize: '0.9rem', color: '#6B7E91', margin: 0, fontWeight: '600' },
   form: { display: 'flex', flexDirection: 'column', gap: '1rem' },
   row: { display: 'flex', gap: '0.75rem' },
   field: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },
-  label: { fontSize: '0.875rem', fontWeight: '600', color: '#444' },
-  input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', outline: 'none' },
+  label: { fontSize: '0.875rem', fontWeight: '700', color: '#1A2B3C' },
+  input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #D8E5EF', fontSize: '1rem', outline: 'none', fontFamily: 'inherit' },
   error: { color: '#d93025', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fdecea', borderRadius: '8px' },
-  button: { display: 'block', padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.25rem', textAlign: 'center' },
+  button: { display: 'block', padding: '0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', marginTop: '0.25rem', textAlign: 'center', fontFamily: 'inherit' },
   hint: { textAlign: 'center', fontSize: '0.8rem', color: '#aaa', marginTop: '1.5rem' },
-  centered: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'system-ui, sans-serif' },
+  centered: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: "'Nunito', system-ui, sans-serif" },
 };

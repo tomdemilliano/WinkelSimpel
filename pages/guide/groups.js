@@ -881,7 +881,7 @@ function RequestsTab({ orgId, callerUid }) {
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
-                  style={{ padding: '0.4rem 0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' }}
+                  style={{ padding: '0.4rem 0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}
                   onClick={() => handleAction(r.id, 'approve')}
                 >
                   Goedkeuren
@@ -943,7 +943,7 @@ const styles = {
   tabContent: { paddingTop: '0.25rem' },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' },
   sectionTitle: { fontSize: '0.8rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 },
-  sectionAddButton: { padding: '0.4rem 0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' },
+  sectionAddButton: { padding: '0.4rem 0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
   cardList: { display: 'flex', flexDirection: 'column', gap: '0.6rem' },
   card: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.75rem' },
   cardAvatar: { width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#E8F5E9', color: '#2E7D32', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '1rem', flexShrink: 0 },
@@ -962,7 +962,7 @@ const styles = {
   tag: { display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#E8F5E9', color: '#2E7D32', borderRadius: '20px', padding: '0.25rem 0.6rem 0.25rem 0.75rem', fontSize: '0.82rem', fontWeight: '600' },
   tagRemove: { background: 'none', border: 'none', cursor: 'pointer', color: '#2E7D32', fontSize: '0.75rem', padding: '0', lineHeight: 1, opacity: 0.7 },
   searchInput: { width: '100%', padding: '0.6rem 0.875rem', borderRadius: '8px', border: '1.5px solid #ddd', fontSize: '0.9rem', backgroundColor: '#fff', boxSizing: 'border-box' },
-  suggestions: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1.5px solid #4CAF50', borderTop: 'none', borderRadius: '0 0 8px 8px', zIndex: 50, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' },
+  suggestions: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1.5px solid #5B9BD5', borderTop: 'none', borderRadius: '0 0 8px 8px', zIndex: 50, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' },
   suggestion: { padding: '0.7rem 0.875rem', cursor: 'pointer', fontSize: '0.9rem', color: '#1a1a1a', borderBottom: '1px solid #f5f5f5' },
   emptyHint: { fontSize: '0.85rem', color: '#bbb', margin: '0.5rem 0', padding: '0.75rem', backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #eee' },
   modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
@@ -976,5 +976,5 @@ const styles = {
   input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', backgroundColor: '#fff' },
   formHint: { fontSize: '0.825rem', color: '#aaa', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fafafa', borderRadius: '8px' },
   errorText: { color: '#c62828', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#FFEBEE', borderRadius: '8px' },
-  saveButton: { padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.5rem' },
+  saveButton: { padding: '0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', marginTop: '0.5rem', fontFamily: 'inherit' },
 };

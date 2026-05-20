@@ -100,7 +100,7 @@ export default function LoginPage() {
             <p style={styles.hint}>Ben je een shopper? Vraag je begeleider om de QR-code.</p>
             <p style={{ ...styles.hint, marginTop: '0.5rem' }}>
               Nieuw hier?{' '}
-              <a href="/register" style={{ color: '#4CAF50', fontWeight: '600', textDecoration: 'none' }}>
+              <a href="/register" style={{ color: '#5B9BD5', fontWeight: '600', textDecoration: 'none' }}>
                 Maak een account aan
               </a>
             </p>
@@ -353,8 +353,8 @@ const styles = {
   label: { fontSize: '0.875rem', fontWeight: '600', color: '#444' },
   input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', outline: 'none' },
   error: { color: '#d93025', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fdecea', borderRadius: '8px' },
-  button: { display: 'block', padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.25rem', textAlign: 'center', textDecoration: 'none' },
-  linkButton: { background: 'none', border: 'none', color: '#4CAF50', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'center' },
+  button: { display: 'block', padding: '0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', marginTop: '0.25rem', textAlign: 'center', textDecoration: 'none', fontFamily: 'inherit' },
+  linkButton: { background: 'none', border: 'none', color: '#5B9BD5', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'center', fontFamily: 'inherit' },
   formHint: { fontSize: '0.875rem', color: '#666', lineHeight: 1.5, margin: 0 },
   changePasswordNotice: { backgroundColor: '#FFF3E0', color: '#E65100', borderRadius: '10px', padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem', textAlign: 'center' },
   hint: { textAlign: 'center', fontSize: '0.8rem', color: '#aaa', marginTop: '1.5rem' },

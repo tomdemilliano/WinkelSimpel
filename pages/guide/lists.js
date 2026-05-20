@@ -540,9 +540,9 @@ const styles = {
     cursor: 'pointer',
   },
   toggleActive: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
-    color: '#2E7D32',
+    backgroundColor: '#EBF4FF',
+    borderColor: '#5B9BD5',
+    color: '#3A7FC1',
   },
   emptyHint: {
     fontSize: '0.85rem',
@@ -563,13 +563,14 @@ const styles = {
   },
   saveButton: {
     padding: '0.875rem',
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#5B9BD5',
     color: '#fff',
     border: 'none',
     borderRadius: '10px',
     fontSize: '1rem',
-    fontWeight: '600',
+    fontWeight: '700',
     cursor: 'pointer',
     marginTop: '0.5rem',
+    fontFamily: 'inherit',
   },
 };

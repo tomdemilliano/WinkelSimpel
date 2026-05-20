@@ -332,7 +332,7 @@ export default function ShopPageClient() {
           {items.map((item, idx) => (
             <div key={item.id} onClick={() => setCurrentIndex(idx)} style={{
               ...styles.dot,
-              backgroundColor: item.checked ? '#4CAF50' : idx === currentIndex ? '#1a1a1a' : '#ddd',
+              backgroundColor: item.checked ? '#5B9BD5' : idx === currentIndex ? '#1A2B3C' : '#ddd',
               transform: idx === currentIndex ? 'scale(1.4)' : 'scale(1)',
               cursor: 'pointer',
             }} />
@@ -449,20 +449,20 @@ function CompletionScreen({ firstName }) {
 
 // ---- Styles ----
 const styles = {
-  fullScreen: { position: 'fixed', inset: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden', fontFamily: 'system-ui, sans-serif', userSelect: 'none', padding: '0.5rem 0 0' },
-  spinner: { width: '60px', height: '60px', border: '6px solid #eee', borderTop: '6px solid #4CAF50', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: '1rem' },
+  fullScreen: { position: 'fixed', inset: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden', fontFamily: "'Nunito', system-ui, sans-serif", userSelect: 'none', padding: '0.5rem 0 0' },
+  spinner: { width: '60px', height: '60px', border: '6px solid #eee', borderTop: '6px solid #5B9BD5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: '1rem' },
   loadingText: { fontSize: '1.1rem', color: '#aaa', margin: 0 },
   messageContent: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', padding: '2rem', textAlign: 'center' },
   messageIcon: { fontSize: '4rem', margin: 0 },
   messageText: { fontSize: '1.2rem', color: '#555', maxWidth: '300px', lineHeight: '1.6', margin: 0 },
-  actionButton: { padding: '1rem 2rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer' },
+  actionButton: { padding: '1rem 2rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
 
   // Progress
   progressSection: { flexShrink: 0, width: '100%', paddingTop: '0.5rem' },
   progressBarWrapper: { width: '100%', height: '12px', backgroundColor: '#eee', borderRadius: '6px', overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: '#4CAF50', transition: 'width 0.4s ease', borderRadius: '6px' },
+  progressBarFill: { height: '100%', backgroundColor: '#5B9BD5', transition: 'width 0.4s ease', borderRadius: '6px' },
   progressLabelRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0.25rem 0' },
-  progressLabel: { fontSize: '0.9rem', fontWeight: '700', color: '#4CAF50' },
+  progressLabel: { fontSize: '0.9rem', fontWeight: '700', color: '#5B9BD5' },
   viewToggleBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', padding: '0.25rem', display: 'flex', alignItems: 'center' },
 
   // Image
@@ -487,14 +487,14 @@ const styles = {
   dot: { width: '9px', height: '9px', borderRadius: '50%', transition: 'all 0.2s ease', flexShrink: 0 },
 
   // Action button
-  takenButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '18px', fontSize: '1.3rem', fontWeight: '800', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', transition: 'transform 0.15s, opacity 0.15s', boxShadow: '0 4px 16px rgba(76,175,80,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' },
+  takenButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '18px', fontSize: '1.3rem', fontWeight: '800', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', transition: 'transform 0.15s, opacity 0.15s', boxShadow: '0 4px 16px rgba(91,155,213,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', fontFamily: 'inherit' },
   uncheckButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#fff', color: '#888', border: '2px solid #ddd', borderRadius: '18px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' },
 
   // Thumbnail strip
   stripWrapper: { flexShrink: 0, width: '100%', paddingBottom: '0.75rem' },
   strip: { display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0 1rem', scrollbarWidth: 'none' },
   stripItem: { flexShrink: 0, width: '60px', height: '60px', borderRadius: '10px', border: '2px solid #eee', backgroundColor: '#f9f9f9', cursor: 'pointer', overflow: 'hidden', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'border-color 0.2s' },
-  stripItemActive: { border: '3px solid #4CAF50' },
+  stripItemActive: { border: '3px solid #5B9BD5' },
   stripImage: { width: '100%', height: '100%', objectFit: 'cover' },
   stripPlaceholder: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
 
