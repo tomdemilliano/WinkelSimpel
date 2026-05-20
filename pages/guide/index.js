@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { ShoppingListFactory, AccessRequestFactory } from '../../lib/dbSchema';
+import { ShoppingListFactory, AccessRequestFactory, OrganizationFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // SVG-illustraties voor dashboard-tegels
@@ -65,6 +65,7 @@ function GuideDashboard({ claims }) {
   const router = useRouter();
   const [listCounts, setListCounts] = useState(null);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  const [orgName, setOrgName] = useState('');
 
   useEffect(() => {
     ShoppingListFactory.getAll(claims.orgId).then(snap => {
@@ -75,6 +76,14 @@ function GuideDashboard({ claims }) {
       });
     });
   }, [claims.orgId]);
+
+  useEffect(() => {
+    if (claims.orgType !== 'private') {
+      OrganizationFactory.getById(claims.orgId)
+        .then(snap => { if (snap.exists()) setOrgName(snap.data().name || ''); })
+        .catch(() => {});
+    }
+  }, [claims.orgId, claims.orgType]);
 
   useEffect(() => {
     if (claims.role !== ROLES.ORG_ADMIN) return;
@@ -102,7 +111,9 @@ function GuideDashboard({ claims }) {
       <div style={styles.headerBand}>
         <div>
           <h1 style={styles.appTitle}>Winkel Simpel</h1>
-          <p style={styles.appSubtitle}>Begeleidersdashboard</p>
+          <p style={styles.appSubtitle}>
+            {orgName || 'Begeleidersdashboard'}
+          </p>
         </div>
         <div style={styles.headerActions}>
           <button style={styles.iconButton} onClick={() => router.push('/guide/account')} aria-label="Account instellingen">
