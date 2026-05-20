@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
-import { OrganizationFactory, AccessRequestFactory } from '../../lib/dbSchema';
+import { AccessRequestFactory } from '../../lib/dbSchema';
 
 function RequestAccessPage({ claims }) {
   const router = useRouter();
@@ -45,9 +45,13 @@ function RequestAccessPage({ claims }) {
   useEffect(() => {
     if (orgType !== 'private') return;
 
-    OrganizationFactory.getAllNonPrivate()
-      .then((result) => {
-        setOrgs(result.docs.map((d) => ({ id: d.id, ...d.data() })));
+    auth.currentUser.getIdToken().then((idToken) =>
+      fetch('/api/org/list-organizations', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+    ).then((res) => res.json())
+      .then((data) => {
+        if (data.orgs) setOrgs(data.orgs);
       })
       .catch(() => {})
       .finally(() => setLoadingOrgs(false));
