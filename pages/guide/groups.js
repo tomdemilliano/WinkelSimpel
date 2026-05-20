@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
+import { auth } from '../../lib/firebase';
 import { GroupFactory, MemberFactory, AccessRequestFactory } from '../../lib/dbSchema';
 import { generateQrToken } from '../../lib/qr';
 
@@ -268,8 +269,22 @@ function GuidesTab({ orgId, uid }) {
 
   async function handleDelete(guide) {
     if (!confirm(`Begeleider "${guide.firstName} ${guide.lastName}" verwijderen?`)) return;
-    await MemberFactory.delete(orgId, guide.id);
-    setGuides(prev => prev.filter(g => g.id !== guide.id));
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/admin/remove-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ orgId, memberId: guide.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.message || 'Verwijderen mislukt.');
+        return;
+      }
+      setGuides(prev => prev.filter(g => g.id !== guide.id));
+    } catch {
+      alert('Verwijderen mislukt. Probeer opnieuw.');
+    }
   }
 
   const ROLE_CONFIG = {
