@@ -45,14 +45,12 @@ function RequestAccessPage({ claims }) {
   useEffect(() => {
     if (orgType !== 'private') return;
 
-    auth.currentUser.getIdToken().then((idToken) =>
-      fetch('/api/org/list-organizations', {
-        headers: { Authorization: `Bearer ${idToken}` },
-      })
-    ).then((res) => res.json())
-      .then((data) => {
-        if (data.orgs) setOrgs(data.orgs);
-      })
+    const user = auth.currentUser;
+    if (!user) { setLoadingOrgs(false); return; }
+    user.getIdToken()
+      .then((idToken) => fetch('/api/org/list-organizations', { headers: { Authorization: `Bearer ${idToken}` } }))
+      .then((res) => res.json())
+      .then((data) => { if (data.orgs) setOrgs(data.orgs); })
       .catch(() => {})
       .finally(() => setLoadingOrgs(false));
 

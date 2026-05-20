@@ -40,8 +40,10 @@ export default async function handler(req, res) {
       return res.status(403).json({ message: 'Alleen zelfstandige gebruikers kunnen organisaties opzoeken.' });
     }
 
-    const snap = await adminDb.collection('organizations').where('isPrivate', '!=', true).get();
-    const orgs = snap.docs.map((d) => ({ id: d.id, name: d.data().name }));
+    const snap = await adminDb.collection('organizations').get();
+    const orgs = snap.docs
+      .filter((d) => d.data().isPrivate !== true)
+      .map((d) => ({ id: d.id, name: d.data().name }));
 
     return res.status(200).json({ orgs });
   } catch (err) {
