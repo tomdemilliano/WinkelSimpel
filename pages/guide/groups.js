@@ -499,15 +499,52 @@ function EditGroupForm({ orgId, group, onSave, onClose }) {
 function EditShopperForm({ orgId, shopper, onSave, onClose }) {
   const [firstName, setFirstName] = useState(shopper.firstName || '');
   const [lastName, setLastName] = useState(shopper.lastName || '');
+  const [voiceName, setVoiceName] = useState(shopper.voiceName || '');
+  const [voices, setVoices] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    function loadVoices() {
+      if (typeof window === 'undefined' || !window.speechSynthesis) return;
+      const all = window.speechSynthesis.getVoices();
+      setVoices(all.filter(v => v.lang.startsWith('nl')));
+    }
+    loadVoices();
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
+
+  function handleTest() {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const name = firstName.trim() || 'Demo';
+    const utt = new SpeechSynthesisUtterance(`${name} gaat boodschappen doen!`);
+    utt.lang = 'nl-BE';
+    utt.rate = 0.88;
+    if (voiceName) {
+      const voice = window.speechSynthesis.getVoices().find(v => v.name === voiceName);
+      if (voice) utt.voice = voice;
+    }
+    window.speechSynthesis.speak(utt);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim()) { setError('Vul voor- en achternaam in.'); return; }
     setSaving(true);
     try {
-      await MemberFactory.update(orgId, shopper.id, { firstName: firstName.trim(), lastName: lastName.trim() });
+      await MemberFactory.update(orgId, shopper.id, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        voiceName: voiceName || null,
+      });
       onSave();
     } catch { setError('Opslaan mislukt.'); setSaving(false); }
   }
@@ -529,6 +566,28 @@ function EditShopperForm({ orgId, shopper, onSave, onClose }) {
             <label style={styles.label}>Achternaam</label>
             <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
               style={styles.input} required />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Voorleesstem (optioneel)</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select
+                value={voiceName}
+                onChange={e => setVoiceName(e.target.value)}
+                style={{ ...styles.input, flex: 1 }}
+              >
+                <option value=''>Standaard (begeleidersinstellingen)</option>
+                {voices.map(v => (
+                  <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleTest}
+                style={{ padding: '0.75rem 0.875rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '10px', fontSize: '0.875rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}
+              >
+                Test
+              </button>
+            </div>
           </div>
           {error && <p style={styles.errorText}>{error}</p>}
           <button type="submit" disabled={saving}

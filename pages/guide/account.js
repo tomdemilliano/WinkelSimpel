@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
-import { MemberFactory } from '../../lib/dbSchema';
+import { MemberFactory, OrganizationFactory } from '../../lib/dbSchema';
 
 function AccountPage({ claims }) {
   const router = useRouter();
@@ -189,6 +189,9 @@ function AccountPage({ claims }) {
           )}
         </div>
 
+        {/* Voorleesinstellingen */}
+        <VoiceSettingsSection orgId={orgId} />
+
         {/* Organisatie */}
         <div style={styles.section}>
           <p style={styles.sectionTitle}>Organisatie</p>
@@ -219,6 +222,119 @@ function AccountPage({ claims }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function VoiceSettingsSection({ orgId }) {
+  const [voices, setVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    OrganizationFactory.getById(orgId)
+      .then(snap => {
+        if (snap.exists()) setSelectedVoice(snap.data().defaultVoiceName || '');
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+
+    function loadVoices() {
+      if (typeof window === 'undefined' || !window.speechSynthesis) return;
+      const all = window.speechSynthesis.getVoices();
+      setVoices(all.filter(v => v.lang.startsWith('nl')));
+    }
+    loadVoices();
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, [orgId]);
+
+  function handleTest() {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance('Hallo! Dit is de stem die producten zal voorlezen.');
+    utt.lang = 'nl-BE';
+    utt.rate = 0.88;
+    if (selectedVoice) {
+      const voice = window.speechSynthesis.getVoices().find(v => v.name === selectedVoice);
+      if (voice) utt.voice = voice;
+    }
+    window.speechSynthesis.speak(utt);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    setSaveError('');
+    try {
+      await OrganizationFactory.update(orgId, { defaultVoiceName: selectedVoice || null });
+      setSaved(true);
+    } catch {
+      setSaveError('Opslaan mislukt. Probeer opnieuw.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.section}>
+      <p style={styles.sectionTitle}>Voorleesinstellingen</p>
+      <p style={styles.sectionHint}>
+        Kies een standaardstem voor alle shoppers in je organisatie. Producten worden automatisch voorgelezen in de boodschappenlijst.
+      </p>
+      {loading ? <p style={styles.hint}>Laden...</p> : (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={styles.label}>Standaardstem (begeleidersniveau)</label>
+            <select
+              style={styles.input}
+              value={selectedVoice}
+              onChange={e => { setSelectedVoice(e.target.value); setSaved(false); }}
+            >
+              <option value=''>Automatisch — beste beschikbare Vlaamse stem</option>
+              {voices.map(v => (
+                <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+              ))}
+            </select>
+          </div>
+          {voices.length === 0 && (
+            <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>
+              Geen Nederlandse stemmen gevonden op dit toestel. Op het apparaat van de shopper wordt automatisch de beste beschikbare stem gekozen.
+            </p>
+          )}
+          <p style={{ fontSize: '0.78rem', color: '#aaa', margin: 0, lineHeight: 1.5 }}>
+            De beschikbare stemmen hangen af van het apparaat van de shopper. Elke shopper kan ook een eigen stem krijgen via "Groepen &amp; leden".
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              type="button"
+              style={styles.secondaryButton}
+              onClick={handleTest}
+            >
+              Testen
+            </button>
+            <button
+              type="button"
+              style={{ ...styles.primaryButton, opacity: saving ? 0.6 : 1 }}
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? 'Opslaan...' : 'Opslaan'}
+            </button>
+          </div>
+          {saved && <p style={styles.successText}>Stem opgeslagen.</p>}
+          {saveError && <p style={styles.errorText}>{saveError}</p>}
+        </>
+      )}
     </div>
   );
 }
