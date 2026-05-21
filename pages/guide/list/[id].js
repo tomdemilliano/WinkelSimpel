@@ -58,7 +58,6 @@ function ListDetail({ claims }) {
   const [members, setMembers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [categories, setCategories] = useState({});
-  const [showReassignForm, setShowReassignForm] = useState(false);
 
   useEffect(() => {
     if (!listId) return;
