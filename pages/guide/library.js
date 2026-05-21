@@ -218,6 +218,24 @@ function ProductLibrary({ claims }) {
 
       {/* Search + sidebar toggle */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', alignItems: 'center' }}>
+        {sidebarCategories.length > 0 && (
+          <button
+            onClick={() => setSidebarOpen(prev => !prev)}
+            style={{ ...styles.sidebarToggleBtn, ...(sidebarOpen ? styles.sidebarToggleBtnActive : {}) }}
+            title={sidebarOpen ? 'Categorieën verbergen' : 'Filteren op categorie'}
+          >
+            <svg width="22" height="22" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="4" y="8" width="20" height="17" rx="4" fill="#D0E8FA" stroke="#5B9BD5" strokeWidth="2"/>
+              <rect x="28" y="8" width="20" height="17" rx="4" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="2"/>
+              <rect x="4" y="29" width="20" height="15" rx="4" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="2"/>
+              <rect x="28" y="29" width="20" height="15" rx="4" fill="#D0E8FA" stroke="#5B9BD5" strokeWidth="2"/>
+              <circle cx="14" cy="16" r="3.5" fill="#5B9BD5"/>
+              <circle cx="38" cy="16" r="3.5" fill="#5B9BD5" opacity="0.5"/>
+              <circle cx="14" cy="36" r="3.5" fill="#5B9BD5" opacity="0.5"/>
+              <circle cx="38" cy="36" r="3.5" fill="#5B9BD5"/>
+            </svg>
+          </button>
+        )}
         <input
           type="search"
           placeholder="Zoeken op naam of categorie..."
@@ -225,17 +243,6 @@ function ProductLibrary({ claims }) {
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ ...styles.searchInput, marginBottom: 0, flex: 1, width: 'auto' }}
         />
-        {sidebarCategories.length > 0 && (
-          <button
-            onClick={() => setSidebarOpen(prev => !prev)}
-            style={{ ...styles.sidebarToggleBtn, ...(sidebarOpen ? styles.sidebarToggleBtnActive : {}) }}
-            title={sidebarOpen ? 'Categorieën verbergen' : 'Filteren op categorie'}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </button>
-        )}
       </div>
 
       {/* Product list */}
