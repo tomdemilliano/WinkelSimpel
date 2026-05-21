@@ -15,6 +15,7 @@ organizations/{orgId}
     createdAt: timestamp
     createdBy: string (userId)
     isPrivate: boolean (true voor privé-organisaties aangemaakt via zelfregistratie)
+    defaultVoiceName: string | null  (standaardstem voor voorlezen in de shopperinterface; naam van een Web Speech API SpeechSynthesisVoice)
 
   members/{userId}
     Fields:
@@ -25,6 +26,7 @@ organizations/{orgId}
       qrToken: string | null (alleen voor shoppers)
       groupIds: string[]
       createdAt: timestamp
+      voiceName: string | null  (alleen voor shoppers; overschrijft defaultVoiceName van de organisatie voor deze specifieke shopper)
 
   groups/{groupId}
     Fields:

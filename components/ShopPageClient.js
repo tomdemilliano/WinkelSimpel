@@ -25,7 +25,6 @@ export default function ShopPageClient() {
   const [shopperName, setShopperName] = useState('');
   const [view, setView] = useState('detail'); // 'detail' | 'overview'
   const [voiceName, setVoiceName] = useState(null);
-  const [ttsEnabled, setTtsEnabled] = useState(true);
 
   const sessionRef = useRef({ orgId: null, listId: null, token: null });
   const touchStartX = useRef(null);
@@ -42,20 +41,6 @@ export default function ShopPageClient() {
     loadList(org, listId, token);
   }, [router.isReady]);
 
-  // Laad TTS-voorkeur uit localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('ttsEnabled');
-    if (stored !== null) setTtsEnabled(stored === 'true');
-  }, []);
-
-  // Spreek product voor bij navigatie in detail view
-  useEffect(() => {
-    if (phase !== 'ready' || !ttsEnabled || view !== 'detail') return;
-    const item = items[currentIndex];
-    if (!item || item.checked) return;
-    speakItem(item);
-  }, [currentIndex, phase, view, ttsEnabled]);
-
   function speakItem(item) {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
@@ -70,13 +55,6 @@ export default function ShopPageClient() {
       : (voices.find(v => v.lang === 'nl-BE') || voices.find(v => v.lang.startsWith('nl')));
     if (voice) utt.voice = voice;
     window.speechSynthesis.speak(utt);
-  }
-
-  function toggleTts() {
-    const next = !ttsEnabled;
-    setTtsEnabled(next);
-    localStorage.setItem('ttsEnabled', String(next));
-    if (!next) window.speechSynthesis?.cancel();
   }
 
   async function loadList(orgId, listId, token) {
@@ -313,8 +291,8 @@ export default function ShopPageClient() {
             {uncheckedItems.length === 0 ? 'Alles genomen! 🎉' : `Nog ${uncheckedItems.length} product${uncheckedItems.length === 1 ? '' : 'en'}`}
           </span>
           <div style={{ display: 'flex', gap: '0.1rem', alignItems: 'center' }}>
-            <button style={{ ...styles.viewToggleBtn, color: ttsEnabled ? '#5B9BD5' : '#ccc' }} onClick={toggleTts}>
-              {ttsEnabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
+            <button style={{ ...styles.viewToggleBtn, color: '#5B9BD5' }} onClick={() => speakItem(currentItem)}>
+              <SpeakerOnIcon />
             </button>
             <button style={styles.viewToggleBtn} onClick={() => setView('overview')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -480,15 +458,6 @@ function SpeakerOnIcon() {
   );
 }
 
-function SpeakerOffIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-      <line x1="23" y1="9" x2="17" y2="15"/>
-      <line x1="17" y1="9" x2="23" y2="15"/>
-    </svg>
-  );
-}
 
 // ---- Completion screen ----
 function CelebrationIllustration() {
