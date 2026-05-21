@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory } from '../../lib/dbSchema';
+import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory, CategoryFactory, CentralCategoryFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // ProductImage — toont afbeelding of standaard winkeltas icon
@@ -39,6 +39,21 @@ function ProductImage({ url, alt, style, placeholderSize = '1.75rem' }) {
 
 
 // ---------------------------------------------------------------------------
+// Fuzzy match — zelfde logica als in de ProductPicker
+// ---------------------------------------------------------------------------
+function fuzzyMatch(needle, haystack) {
+  if (!needle) return true;
+  const n = needle.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const h = haystack.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (h.includes(n)) return true;
+  let ni = 0;
+  for (let hi = 0; hi < h.length && ni < n.length; hi++) {
+    if (h[hi] === n[ni]) ni++;
+  }
+  return ni === n.length;
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 function ProductLibrary({ claims }) {
@@ -50,7 +65,11 @@ function ProductLibrary({ claims }) {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null); // null = new product
   const [searchQuery, setSearchQuery] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState(null);
   const [centralProducts, setCentralProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [centralCategories, setCentralCategories] = useState([]);
 
   // Load products on mount
   useEffect(() => {
@@ -60,12 +79,16 @@ function ProductLibrary({ claims }) {
   async function loadProducts() {
     setLoading(true);
     try {
-      const [orgSnap, centralSnap] = await Promise.all([
+      const [orgSnap, centralSnap, catSnap, centralCatSnap] = await Promise.all([
         ProductFactory.getAll(orgId),
         CentralProductFactory.getAll(),
+        CategoryFactory.getAll(orgId),
+        CentralCategoryFactory.getAll(),
       ]);
       setProducts(orgSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'org' })));
       setCentralProducts(centralSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'central' })));
+      setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCentralCategories(centralCatSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -81,6 +104,23 @@ function ProductLibrary({ claims }) {
   function handleNew() {
     setEditingProduct(null);
     setShowForm(true);
+  }
+
+  async function handleCopyFromCentral(centralProduct) {
+    try {
+      await ProductFactory.create(orgId, {
+        name: centralProduct.name,
+        imageUrl: centralProduct.imageUrl,
+        unit: centralProduct.unit,
+        categoryId: null,
+        centralProductId: centralProduct.id,
+        createdBy: claims.uid,
+      });
+      await loadProducts();
+    } catch (err) {
+      console.error('Failed to copy product:', err);
+      alert('Kopiëren mislukt. Probeer opnieuw.');
+    }
   }
 
   async function handleDelete(product) {
@@ -108,21 +148,60 @@ function ProductLibrary({ claims }) {
     await loadProducts();
   }
 
-  // Combineer centrale + org producten, vermijd duplicaten op naam
-  const orgProductNames = new Set(products.map(p => p.name.toLowerCase().trim()));
-  const centralOnly = centralProducts.filter(
-    p => !orgProductNames.has(p.name.toLowerCase().trim())
+  // Deduplicatie: org-producten met centralProductId verbergen het centrale product.
+  // Fallback op naam voor bestaande org-producten zonder expliciete koppeling.
+  const explicitLinkedIds = new Set(
+    products.filter(p => p.centralProductId).map(p => p.centralProductId)
+  );
+  const orgNamesWithoutLink = new Set(
+    products.filter(p => !p.centralProductId).map(p => p.name.toLowerCase().trim())
+  );
+  const unlinkedCentralProducts = centralProducts.filter(
+    c => !explicitLinkedIds.has(c.id) && !orgNamesWithoutLink.has(c.name.toLowerCase().trim())
   );
   const allProducts = [
-    ...centralProducts.filter(p => orgProductNames.has(p.name.toLowerCase().trim()))
-      .map(c => ({ ...products.find(p => p.name.toLowerCase().trim() === c.name.toLowerCase().trim()), _central: c })),
-    ...centralOnly,
-    ...products.filter(p => !centralProducts.some(c => c.name.toLowerCase().trim() === p.name.toLowerCase().trim())),
+    ...products.map(p => ({
+      ...p,
+      _source: 'org',
+      _centralProduct: p.centralProductId
+        ? centralProducts.find(c => c.id === p.centralProductId) || null
+        : centralProducts.find(c => c.name.toLowerCase().trim() === p.name.toLowerCase().trim()) || null,
+    })),
+    ...unlinkedCentralProducts.map(c => ({ ...c, _source: 'central' })),
   ];
 
-  const filteredProducts = allProducts.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Bouw een unieke categorielijst voor het zijpaneel
+  const usedCategoryKeys = new Set();
+  const sidebarCategories = [];
+  allProducts.forEach(p => {
+    const key = p._source === 'central' && p.centralCategoryId
+      ? `central:${p.centralCategoryId}`
+      : p._source === 'org' && p.categoryId
+        ? `org:${p.categoryId}`
+        : null;
+    if (!key || usedCategoryKeys.has(key)) return;
+    const cat = p._source === 'central'
+      ? centralCategories.find(c => c.id === p.centralCategoryId)
+      : categories.find(c => c.id === p.categoryId);
+    if (cat) {
+      usedCategoryKeys.add(key);
+      sidebarCategories.push({ ...cat, _key: key });
+    }
+  });
+  sidebarCategories.sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+
+  const filteredProducts = allProducts.filter((p) => {
+    const cat = p._source === 'central'
+      ? centralCategories.find(c => c.id === p.centralCategoryId)
+      : categories.find(c => c.id === p.categoryId);
+    const matchesSearch = !searchQuery || fuzzyMatch(searchQuery, p.name) || (cat && fuzzyMatch(searchQuery, cat.name));
+    if (!matchesSearch) return false;
+    if (!selectedCategoryKey) return true;
+    const [src, catId] = selectedCategoryKey.split(':');
+    if (src === 'org') return p._source === 'org' && p.categoryId === catId;
+    if (src === 'central') return p._source === 'central' && p.centralCategoryId === catId;
+    return true;
+  });
 
   return (
     <div style={styles.page}>
@@ -137,36 +216,94 @@ function ProductLibrary({ claims }) {
         </button>
       </div>
 
-      {/* Search */}
-      <input
-        type="search"
-        placeholder="Zoeken..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        style={styles.searchInput}
-      />
+      {/* Search + sidebar toggle */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', alignItems: 'center' }}>
+        {sidebarCategories.length > 0 && (
+          <button
+            onClick={() => setSidebarOpen(prev => !prev)}
+            style={{ ...styles.sidebarToggleBtn, ...(sidebarOpen ? styles.sidebarToggleBtnActive : {}) }}
+            title={sidebarOpen ? 'Categorieën verbergen' : 'Filteren op categorie'}
+          >
+            <svg width="22" height="22" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="4" y="8" width="20" height="17" rx="4" fill="#D0E8FA" stroke="#5B9BD5" strokeWidth="2"/>
+              <rect x="28" y="8" width="20" height="17" rx="4" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="2"/>
+              <rect x="4" y="29" width="20" height="15" rx="4" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="2"/>
+              <rect x="28" y="29" width="20" height="15" rx="4" fill="#D0E8FA" stroke="#5B9BD5" strokeWidth="2"/>
+              <circle cx="14" cy="16" r="3.5" fill="#5B9BD5"/>
+              <circle cx="38" cy="16" r="3.5" fill="#5B9BD5" opacity="0.5"/>
+              <circle cx="14" cy="36" r="3.5" fill="#5B9BD5" opacity="0.5"/>
+              <circle cx="38" cy="36" r="3.5" fill="#5B9BD5"/>
+            </svg>
+          </button>
+        )}
+        <input
+          type="search"
+          placeholder="Zoeken op naam of categorie..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ ...styles.searchInput, marginBottom: 0, flex: 1, width: 'auto' }}
+        />
+      </div>
 
       {/* Product list */}
       {loading ? (
         <div style={styles.centered}>
           <p style={styles.hint}>Laden...</p>
         </div>
-      ) : filteredProducts.length === 0 ? (
-        <div style={styles.centered}>
-          <p style={styles.hint}>
-            {searchQuery ? 'Geen producten gevonden.' : 'Nog geen producten. Voeg er een toe!'}
-          </p>
-        </div>
       ) : (
-        <div style={styles.productGrid}>
-          {filteredProducts.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onEdit={() => handleEdit(product)}
-              onDelete={() => handleDelete(product)}
-            />
-          ))}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+          {/* Zijpaneel categorieën */}
+          {sidebarOpen && sidebarCategories.length > 0 && (
+            <div style={styles.sidebar}>
+              <button
+                style={{ ...styles.sidebarItem, ...(selectedCategoryKey === null ? styles.sidebarItemActive : {}) }}
+                onClick={() => setSelectedCategoryKey(null)}
+              >
+                <span style={styles.sidebarItemLabel}>Alle</span>
+              </button>
+              {sidebarCategories.map(cat => (
+                <button
+                  key={cat._key}
+                  style={{ ...styles.sidebarItem, ...(selectedCategoryKey === cat._key ? styles.sidebarItemActive : {}) }}
+                  onClick={() => setSelectedCategoryKey(selectedCategoryKey === cat._key ? null : cat._key)}
+                >
+                  {cat.iconUrl
+                    ? <img src={cat.iconUrl} alt="" style={styles.sidebarItemIcon} referrerPolicy="no-referrer" />
+                    : <span style={{ fontSize: '1rem', flexShrink: 0 }}>🏷️</span>
+                  }
+                  <span style={styles.sidebarItemLabel}>{cat.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Producten */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {filteredProducts.length === 0 ? (
+              <div style={styles.centered}>
+                <p style={styles.hint}>
+                  {searchQuery || selectedCategoryKey ? 'Geen producten gevonden.' : 'Nog geen producten. Voeg er een toe!'}
+                </p>
+              </div>
+            ) : (
+              <div style={styles.productGrid}>
+                {filteredProducts.map((product) => (
+                  <ProductCard
+                    key={`${product._source}-${product.id}`}
+                    product={product}
+                    category={
+                      product._source === 'central'
+                        ? (centralCategories.find(c => c.id === product.centralCategoryId) || null)
+                        : (categories.find(c => c.id === product.categoryId) || null)
+                    }
+                    onEdit={() => handleEdit(product)}
+                    onDelete={() => handleDelete(product)}
+                    onCopy={() => handleCopyFromCentral(product)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -175,6 +312,7 @@ function ProductLibrary({ claims }) {
         <ProductForm
           orgId={orgId}
           product={editingProduct}
+          categories={categories}
           onSave={handleFormSave}
           onClose={handleFormClose}
           claims={claims}
@@ -187,9 +325,9 @@ function ProductLibrary({ claims }) {
 // ---------------------------------------------------------------------------
 // ProductCard
 // ---------------------------------------------------------------------------
-function ProductCard({ product, onEdit, onDelete }) {
+function ProductCard({ product, category, onEdit, onDelete, onCopy }) {
   const isCentral = product._source === 'central';
-  const hasOrgVersion = !!product._central;
+  const isLinkedToCentral = product._source === 'org' && !!product._centralProduct;
   return (
     <div style={styles.card}>
       <div style={styles.cardImageWrapper}>
@@ -198,16 +336,29 @@ function ProductCard({ product, onEdit, onDelete }) {
       <div style={styles.cardBody}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
           <p style={styles.cardName}>{product.name}</p>
-          {isCentral && !hasOrgVersion && (
+          {(isCentral || isLinkedToCentral) && (
             <span style={styles.centralBadge}>Centraal</span>
           )}
         </div>
         <p style={styles.cardUnit}>{product.unit}</p>
+        {category && (
+          <div style={styles.categoryBadge}>
+            {category.iconUrl && (
+              <img src={category.iconUrl} alt="" style={styles.categoryBadgeIcon} referrerPolicy="no-referrer" />
+            )}
+            <span style={styles.categoryBadgeLabel}>{category.name}</span>
+          </div>
+        )}
       </div>
       <div style={styles.cardActions}>
         {!isCentral && <button style={styles.editButton} onClick={onEdit}>Bewerken</button>}
         {!isCentral && <button style={styles.deleteButton} onClick={onDelete}>Verwijderen</button>}
-        {isCentral && !hasOrgVersion && <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alleen-lezen</span>}
+        {isCentral && (
+          <>
+            <button style={styles.copyButton} onClick={onCopy}>Kopieer</button>
+            <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alleen-lezen</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -216,11 +367,12 @@ function ProductCard({ product, onEdit, onDelete }) {
 // ---------------------------------------------------------------------------
 // ProductForm (modal)
 // ---------------------------------------------------------------------------
-function ProductForm({ orgId, product, onSave, onClose, claims }) {
+function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
   const isEditing = !!product;
 
   const [name, setName] = useState(product?.name || '');
   const [unit, setUnit] = useState(product?.unit || 'stuks');
+  const [categoryId, setCategoryId] = useState(product?.categoryId || '');
   const [imageFile, setImageFile] = useState(null);
   // imagePreview toont altijd de meest recente afbeelding (upload, import of bestaande URL)
   const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
@@ -266,10 +418,18 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
   async function submitToCentral(orgProductId, name, imageUrl, unit) {
     // Niet indienen als het al in de centrale library staat
     if (centralMatch) return;
+    const selectedCategory = categories.find(c => c.id === categoryId) || null;
     try {
-      await ProductSubmissionFactory.create({ name, imageUrl, unit, orgId, orgProductId });
+      await ProductSubmissionFactory.create({
+        name, imageUrl, unit, orgId, orgProductId,
+        orgCategoryId: categoryId || null,
+        orgCategoryName: selectedCategory?.name || null,
+        orgCategoryIconUrl: selectedCategory?.iconUrl || null,
+        orgCategoryColor: selectedCategory?.color || null,
+        orgCategoryCentralId: selectedCategory?.centralCategoryId || null,
+      });
     } catch (err) {
-      console.warn('Submission to central failed (non-blocking):', err.message);
+      console.error('Submission to central failed:', err.message, err);
     }
   }
 
@@ -321,40 +481,44 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
           imageUrl = importedImageUrl;
         }
 
-        await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl });
-        onSave({ id: product.id, name: name.trim(), unit, imageUrl });
+        await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl, categoryId: categoryId || null });
+        onSave({ id: product.id, name: name.trim(), unit, imageUrl, categoryId: categoryId || null });
       } else {
         // Create new product
+        const catId = categoryId || null;
         if (imageFile) {
           // Upload image if provided
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: '',
             unit,
+            categoryId: catId,
             createdBy: claims.uid,
           });
           const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
           await ProductFactory.update(orgId, docRef.id, { imageUrl });
           await submitToCentral(docRef.id, name.trim(), imageUrl, unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl, categoryId: catId });
         } else if (importedImageUrl?.trim()) {
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: importedImageUrl.trim(),
             unit,
+            categoryId: catId,
             createdBy: claims.uid,
           });
           await submitToCentral(docRef.id, name.trim(), importedImageUrl.trim(), unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim() });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim(), categoryId: catId });
         } else {
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: '',
             unit,
+            categoryId: catId,
             createdBy: claims.uid,
           });
           await submitToCentral(docRef.id, name.trim(), '', unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '' });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '', categoryId: catId });
         }
       }
     } catch (err) {
@@ -487,6 +651,27 @@ function ProductForm({ orgId, product, onSave, onClose, claims }) {
             </select>
           </div>
 
+          {/* Categorie */}
+          <div style={styles.field}>
+            <label style={styles.label}>Categorie (optioneel)</label>
+            {categories.length === 0 ? (
+              <p style={{ fontSize: '0.8rem', color: '#aaa', margin: 0 }}>
+                Nog geen categorieën aangemaakt. Ga naar <strong>Categorieën</strong> in het dashboard.
+              </p>
+            ) : (
+              <select
+                value={categoryId}
+                onChange={e => setCategoryId(e.target.value)}
+                style={styles.input}
+              >
+                <option value="">— Geen categorie —</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
           {error && <p style={styles.errorText}>{error}</p>}
 
           <button
@@ -510,8 +695,8 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ProductLibrary);
 const styles = {
   page: {
     minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-    fontFamily: 'system-ui, sans-serif',
+    backgroundColor: '#F4F8FC',
+    fontFamily: "'Nunito', system-ui, sans-serif",
     padding: '1.5rem',
     maxWidth: '600px',
     margin: '0 auto',
@@ -520,32 +705,36 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '1.25rem',
+    backgroundColor: '#5B9BD5',
+    margin: '-1.5rem -1.5rem 1.25rem -1.5rem',
+    padding: '1.25rem 1.5rem',
   },
   backButton: {
     background: 'none',
     border: 'none',
     fontSize: '0.9rem',
-    color: '#4CAF50',
+    color: '#fff',
     cursor: 'pointer',
     padding: '0.25rem 0',
-    fontWeight: '600',
+    fontWeight: '700',
+    fontFamily: 'inherit',
   },
   title: {
     fontSize: '1.2rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
+    fontWeight: '800',
+    color: '#fff',
     margin: 0,
   },
   addButton: {
-    padding: '0.5rem 1rem',
-    backgroundColor: '#4CAF50',
+    padding: '0.45rem 1rem',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '0.9rem',
-    fontWeight: '600',
+    border: '1.5px solid rgba(255,255,255,0.5)',
+    borderRadius: '20px',
+    fontSize: '0.875rem',
+    fontWeight: '700',
     cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   searchInput: {
     width: '100%',
@@ -641,6 +830,16 @@ const styles = {
     padding: '0.35rem 0.75rem',
     backgroundColor: '#FFEBEE',
     color: '#c62828',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '0.8rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  copyButton: {
+    padding: '0.35rem 0.75rem',
+    backgroundColor: '#E8F5E9',
+    color: '#2E7D32',
     border: 'none',
     borderRadius: '6px',
     fontSize: '0.8rem',
@@ -781,13 +980,94 @@ const styles = {
   },
   saveButton: {
     padding: '0.875rem',
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#5B9BD5',
     color: '#fff',
     border: 'none',
     borderRadius: '10px',
     fontSize: '1rem',
-    fontWeight: '600',
+    fontWeight: '700',
     cursor: 'pointer',
     marginTop: '0.5rem',
+  },
+  sidebarToggleBtn: {
+    padding: '0.75rem',
+    backgroundColor: '#f5f5f5',
+    border: '1.5px solid #ddd',
+    borderRadius: '10px',
+    cursor: 'pointer',
+    color: '#666',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    width: '46px',
+    height: '46px',
+  },
+  sidebarToggleBtnActive: {
+    backgroundColor: '#EBF4FF',
+    borderColor: '#5B9BD5',
+    color: '#1565C0',
+  },
+  sidebar: {
+    width: '120px',
+    flexShrink: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
+  },
+  sidebarItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    padding: '0.5rem 0.6rem',
+    borderRadius: '8px',
+    border: '1.5px solid #eee',
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    textAlign: 'left',
+    width: '100%',
+    fontFamily: 'inherit',
+  },
+  sidebarItemActive: {
+    backgroundColor: '#EBF4FF',
+    borderColor: '#5B9BD5',
+  },
+  sidebarItemIcon: {
+    width: '18px',
+    height: '18px',
+    objectFit: 'contain',
+    flexShrink: 0,
+  },
+  sidebarItemLabel: {
+    fontSize: '0.72rem',
+    fontWeight: '600',
+    color: '#444',
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+  },
+  categoryBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.3rem',
+    backgroundColor: '#FFF8E1',
+    border: '1px solid #FFE082',
+    borderRadius: '20px',
+    padding: '0.15rem 0.55rem',
+    marginTop: '0.3rem',
+  },
+  categoryBadgeIcon: {
+    width: '16px',
+    height: '16px',
+    objectFit: 'contain',
+    flexShrink: 0,
+  },
+  categoryBadgeLabel: {
+    fontSize: '0.72rem',
+    fontWeight: '600',
+    color: '#795548',
+    whiteSpace: 'nowrap',
   },
 };

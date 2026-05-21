@@ -6,14 +6,14 @@
  * - Centrale bibliotheek: productsubmissions reviewen + centrale producten beheren
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, signOut, ROLES } from '../../lib/auth';
-import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, OrganizationFactory as OrgFactory } from '../../lib/dbSchema';
+import { OrganizationFactory, CentralProductFactory, ProductSubmissionFactory, ProductFactory, CentralCategoryFactory, CategoryFactory, OrganizationFactory as OrgFactory, CentralStoreFactory, StoreSubmissionFactory, StorageFactory } from '../../lib/dbSchema';
 
 function AdminDashboard({ claims }) {
   const router = useRouter();
-  const [tab, setTab] = useState('orgs'); // 'orgs' | 'library'
+  const [tab, setTab] = useState('orgs'); // 'orgs' | 'library' | 'stores' | 'accounts'
 
   async function handleSignOut() {
     await signOut();
@@ -39,10 +39,18 @@ function AdminDashboard({ claims }) {
         <button style={{ ...styles.tab, ...(tab === 'library' ? styles.tabActive : {}) }} onClick={() => setTab('library')}>
           Centrale bibliotheek
         </button>
+        <button style={{ ...styles.tab, ...(tab === 'stores' ? styles.tabActive : {}) }} onClick={() => setTab('stores')}>
+          Winkels
+        </button>
+        <button style={{ ...styles.tab, ...(tab === 'accounts' ? styles.tabActive : {}) }} onClick={() => setTab('accounts')}>
+          Accounts
+        </button>
       </div>
 
       {tab === 'orgs' && <OrgsTab claims={claims} router={router} />}
       {tab === 'library' && <LibraryTab claims={claims} />}
+      {tab === 'stores' && <StoresTab claims={claims} />}
+      {tab === 'accounts' && <AccountsTab claims={claims} />}
     </div>
   );
 }
@@ -114,30 +122,73 @@ function OrgsTab({ claims, router }) {
 function LibraryTab({ claims }) {
   const [pending, setPending] = useState([]);
   const [central, setCentral] = useState([]);
+  const [centralCategories, setCentralCategories] = useState([]);
   const [orgs, setOrgs] = useState({});
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState('pending'); // 'pending' | 'approved'
+  const [section, setSection] = useState('pending'); // 'pending' | 'approved' | 'categories'
+  const [editingCategory, setEditingCategory] = useState(null); // null = closed, undefined = new, object = edit
+  const [editingProduct, setEditingProduct] = useState(null);   // null = closed, undefined = new, object = edit
 
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
     setLoading(true);
     try {
-      const [pendingSnap, centralSnap, orgsSnap] = await Promise.all([
+      const [pendingSnap, centralSnap, centralCatSnap, orgsSnap] = await Promise.all([
         ProductSubmissionFactory.getPending(),
         CentralProductFactory.getAll(),
+        CentralCategoryFactory.getAll(),
         OrganizationFactory.getAll(),
       ]);
-      setPending(pendingSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const pendingItems = pendingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.submittedAt?.seconds || 0) - (b.submittedAt?.seconds || 0));
+      setPending(pendingItems);
       setCentral(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCentralCategories(centralCatSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       const orgMap = {};
       orgsSnap.docs.forEach(d => { orgMap[d.id] = d.data().name; });
       setOrgs(orgMap);
+    } catch (err) {
+      console.error('Failed to load library data:', err);
+      alert('Laden mislukt: ' + err.message);
     } finally { setLoading(false); }
   }
 
-  async function handleApprove(submission) {
+  async function handleApprove(submission, categoryDecision) {
     try {
+      // Verwerk categorie-beslissing
+      let centralCategoryId = null;
+      if (categoryDecision === '__create__' && submission.orgCategoryId) {
+        // Controleer eerst of de categorie ondertussen al aangemaakt werd (bijv. door vorige goedkeuring)
+        const alreadyExists = centralCategories.find(
+          c => c.name.toLowerCase().trim() === submission.orgCategoryName?.toLowerCase().trim()
+        );
+        if (alreadyExists) {
+          centralCategoryId = alreadyExists.id;
+        } else {
+          const catRef = await CentralCategoryFactory.create({
+            name: submission.orgCategoryName,
+            iconUrl: submission.orgCategoryIconUrl || '',
+            color: submission.orgCategoryColor || '#4CAF50',
+            approvedBy: claims.uid,
+            sourceOrgId: submission.orgId,
+            sourceCategoryId: submission.orgCategoryId,
+          });
+          centralCategoryId = catRef.id;
+          setCentralCategories(prev => [...prev, {
+            id: catRef.id,
+            name: submission.orgCategoryName,
+            iconUrl: submission.orgCategoryIconUrl || '',
+            color: submission.orgCategoryColor || '#4CAF50',
+          }].sort((a, b) => a.name.localeCompare(b.name)));
+        }
+        // Koppel org-categorie aan centrale categorie (non-blocking)
+        CategoryFactory.update(submission.orgId, submission.orgCategoryId, { centralCategoryId })
+          .catch(err => console.warn('Could not link org category:', err.message));
+      } else if (categoryDecision && categoryDecision !== '__none__') {
+        centralCategoryId = categoryDecision;
+      }
+
       // Maak centraal product aan
       const ref = await CentralProductFactory.create({
         name: submission.name,
@@ -146,15 +197,27 @@ function LibraryTab({ claims }) {
         approvedBy: claims.uid,
         sourceOrgId: submission.orgId,
         sourceProductId: submission.orgProductId,
+        centralCategoryId,
       });
       // Update submission status
       await ProductSubmissionFactory.approve(submission.id, ref.id);
+      // Koppel het originele org-product aan het centrale product (non-blocking)
+      ProductFactory.update(submission.orgId, submission.orgProductId, { centralProductId: ref.id })
+        .catch(err => console.warn('Could not link org product to central product:', err.message));
       setPending(prev => prev.filter(p => p.id !== submission.id));
-      setCentral(prev => [...prev, { id: ref.id, name: submission.name, imageUrl: submission.imageUrl, unit: submission.unit }]
-        .sort((a, b) => a.name.localeCompare(b.name)));
+      setCentral(prev => [...prev, {
+        id: ref.id, name: submission.name, imageUrl: submission.imageUrl,
+        unit: submission.unit, centralCategoryId,
+      }].sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       alert('Goedkeuren mislukt: ' + err.message);
     }
+  }
+
+  async function handleDeleteCentralCategory(category) {
+    if (!confirm(`Categorie "${category.name}" uit de centrale bibliotheek verwijderen?`)) return;
+    await CentralCategoryFactory.delete(category.id);
+    setCentralCategories(prev => prev.filter(c => c.id !== category.id));
   }
 
   async function handleReject(submission) {
@@ -169,6 +232,55 @@ function LibraryTab({ claims }) {
     setCentral(prev => prev.filter(p => p.id !== product.id));
   }
 
+  async function handleSaveCentralCategory({ name, iconUrl, color, iconFile }) {
+    const isEdit = editingCategory && editingCategory.id;
+    let finalIconUrl = iconUrl;
+    if (isEdit) {
+      if (iconFile) finalIconUrl = await StorageFactory.uploadCentralCategoryIcon(editingCategory.id, iconFile);
+      await CentralCategoryFactory.update(editingCategory.id, { name, iconUrl: finalIconUrl, color });
+      setCentralCategories(prev =>
+        prev.map(c => c.id === editingCategory.id ? { ...c, name, iconUrl: finalIconUrl, color } : c)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } else {
+      const ref = await CentralCategoryFactory.create({ name, iconUrl: '', color, approvedBy: claims.uid });
+      if (iconFile) {
+        finalIconUrl = await StorageFactory.uploadCentralCategoryIcon(ref.id, iconFile);
+        await CentralCategoryFactory.update(ref.id, { iconUrl: finalIconUrl });
+      }
+      setCentralCategories(prev =>
+        [...prev, { id: ref.id, name, iconUrl: finalIconUrl, color }]
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    }
+    setEditingCategory(null);
+  }
+
+  async function handleSaveCentralProduct({ name, imageUrl, unit, centralCategoryId, imageFile }) {
+    const isEdit = editingProduct && editingProduct.id;
+    let finalImageUrl = imageUrl;
+    const catId = centralCategoryId || null;
+    if (isEdit) {
+      if (imageFile) finalImageUrl = await StorageFactory.uploadCentralProductImage(editingProduct.id, imageFile);
+      await CentralProductFactory.update(editingProduct.id, { name, imageUrl: finalImageUrl, unit, centralCategoryId: catId });
+      setCentral(prev =>
+        prev.map(p => p.id === editingProduct.id ? { ...p, name, imageUrl: finalImageUrl, unit, centralCategoryId: catId } : p)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } else {
+      const ref = await CentralProductFactory.create({ name, imageUrl: '', unit, approvedBy: claims.uid, centralCategoryId: catId });
+      if (imageFile) {
+        finalImageUrl = await StorageFactory.uploadCentralProductImage(ref.id, imageFile);
+        await CentralProductFactory.update(ref.id, { imageUrl: finalImageUrl });
+      }
+      setCentral(prev =>
+        [...prev, { id: ref.id, name, imageUrl: finalImageUrl, unit, centralCategoryId: catId }]
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    }
+    setEditingProduct(null);
+  }
+
   if (loading) return <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>;
 
   return (
@@ -181,7 +293,11 @@ function LibraryTab({ claims }) {
         </button>
         <button style={{ ...styles.subTab, ...(section === 'approved' ? styles.subTabActive : {}) }}
           onClick={() => setSection('approved')}>
-          Centrale bibliotheek ({central.length})
+          Producten ({central.length})
+        </button>
+        <button style={{ ...styles.subTab, ...(section === 'categories' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('categories')}>
+          Categorieën ({centralCategories.length})
         </button>
       </div>
 
@@ -194,7 +310,8 @@ function LibraryTab({ claims }) {
               {pending.map(sub => (
                 <SubmissionCard key={sub.id} submission={sub}
                   orgName={orgs[sub.orgId] || sub.orgId}
-                  onApprove={() => handleApprove(sub)}
+                  centralCategories={centralCategories}
+                  onApprove={(categoryDecision) => handleApprove(sub, categoryDecision)}
                   onReject={() => handleReject(sub)} />
               ))}
             </div>
@@ -204,12 +321,186 @@ function LibraryTab({ claims }) {
 
       {section === 'approved' && (
         <>
+          <div style={styles.sectionHeader}>
+            <p style={styles.sectionTitle}>Centrale producten</p>
+            <button style={styles.addButton} onClick={() => setEditingProduct(undefined)}>+ Nieuw</button>
+          </div>
           {central.length === 0 ? (
             <div style={styles.centered}><p style={styles.hint}>Centrale bibliotheek is leeg.</p></div>
           ) : (
             <div style={styles.cardList}>
               {central.map(p => (
-                <CentralProductCard key={p.id} product={p} onDelete={() => handleDeleteCentral(p)} />
+                <CentralProductCard key={p.id} product={p}
+                  centralCategories={centralCategories}
+                  onEdit={() => setEditingProduct(p)}
+                  onDelete={() => handleDeleteCentral(p)} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {section === 'categories' && (
+        <>
+          <div style={styles.sectionHeader}>
+            <p style={styles.sectionTitle}>Centrale categorieën</p>
+            <button style={styles.addButton} onClick={() => setEditingCategory(undefined)}>+ Nieuw</button>
+          </div>
+          {centralCategories.length === 0 ? (
+            <div style={styles.centered}><p style={styles.hint}>Nog geen centrale categorieën.</p></div>
+          ) : (
+            <div style={styles.cardList}>
+              {centralCategories.map(c => (
+                <CentralCategoryCard key={c.id} category={c}
+                  onEdit={() => setEditingCategory(c)}
+                  onDelete={() => handleDeleteCentralCategory(c)} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {editingCategory !== null && (
+        <CentralCategoryForm
+          category={editingCategory}
+          onSave={handleSaveCentralCategory}
+          onClose={() => setEditingCategory(null)} />
+      )}
+      {editingProduct !== null && (
+        <CentralProductForm
+          product={editingProduct}
+          centralCategories={centralCategories}
+          onSave={handleSaveCentralProduct}
+          onClose={() => setEditingProduct(null)} />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StoresTab
+// ---------------------------------------------------------------------------
+function StoresTab({ claims }) {
+  const [pending, setPending] = useState([]);
+  const [central, setCentral] = useState([]);
+  const [orgs, setOrgs] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState('pending'); // 'pending' | 'approved'
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function loadAll() {
+    setLoading(true);
+    try {
+      const [pendingSnap, centralSnap, orgsSnap] = await Promise.all([
+        StoreSubmissionFactory.getPending(),
+        CentralStoreFactory.getAll(),
+        OrganizationFactory.getAll(),
+      ]);
+      const pendingItems = pendingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.submittedAt?.seconds || 0) - (b.submittedAt?.seconds || 0));
+      setPending(pendingItems);
+      setCentral(centralSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const orgMap = {};
+      orgsSnap.docs.forEach(d => { orgMap[d.id] = d.data().name; });
+      setOrgs(orgMap);
+    } catch (err) {
+      console.error('Failed to load stores data:', err);
+      alert('Laden mislukt: ' + err.message);
+    } finally { setLoading(false); }
+  }
+
+  async function handleApprove(submission) {
+    try {
+      const ref = await CentralStoreFactory.create({
+        name: submission.name,
+        type: submission.type,
+        logoUrl: submission.logoUrl,
+        approvedBy: claims.uid,
+        sourceOrgId: submission.orgId,
+        sourceStoreId: submission.orgStoreId,
+      });
+      await StoreSubmissionFactory.approve(submission.id, ref.id);
+      setPending(prev => prev.filter(p => p.id !== submission.id));
+      setCentral(prev => [...prev, {
+        id: ref.id,
+        name: submission.name,
+        type: submission.type,
+        logoUrl: submission.logoUrl,
+      }].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      alert('Goedkeuren mislukt: ' + err.message);
+    }
+  }
+
+  async function handleReject(submission) {
+    if (!confirm(`"${submission.name}" weigeren?`)) return;
+    await StoreSubmissionFactory.reject(submission.id);
+    setPending(prev => prev.filter(p => p.id !== submission.id));
+  }
+
+  async function handleDeleteCentral(store) {
+    if (!confirm(`"${store.name}" uit de centrale bibliotheek verwijderen?`)) return;
+    await CentralStoreFactory.delete(store.id);
+    setCentral(prev => prev.filter(s => s.id !== store.id));
+  }
+
+  if (loading) return <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>;
+
+  return (
+    <>
+      {/* Sub-tabs */}
+      <div style={styles.subTabs}>
+        <button
+          style={{ ...styles.subTab, ...(section === 'pending' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('pending')}
+        >
+          Wachtrij {pending.length > 0 && <span style={styles.badge}>{pending.length}</span>}
+        </button>
+        <button
+          style={{ ...styles.subTab, ...(section === 'approved' ? styles.subTabActive : {}) }}
+          onClick={() => setSection('approved')}
+        >
+          Centrale bibliotheek ({central.length})
+        </button>
+      </div>
+
+      {section === 'pending' && (
+        <>
+          {pending.length === 0 ? (
+            <div style={styles.centered}>
+              <p style={styles.hint}>Geen winkels in de wachtrij. ✅</p>
+            </div>
+          ) : (
+            <div style={styles.cardList}>
+              {pending.map(sub => (
+                <StoreSubmissionCard
+                  key={sub.id}
+                  submission={sub}
+                  orgName={orgs[sub.orgId] || sub.orgId}
+                  onApprove={() => handleApprove(sub)}
+                  onReject={() => handleReject(sub)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {section === 'approved' && (
+        <>
+          {central.length === 0 ? (
+            <div style={styles.centered}>
+              <p style={styles.hint}>Centrale winkelbibliotheek is leeg.</p>
+            </div>
+          ) : (
+            <div style={styles.cardList}>
+              {central.map(s => (
+                <CentralStoreCard
+                  key={s.id}
+                  store={s}
+                  onDelete={() => handleDeleteCentral(s)}
+                />
               ))}
             </div>
           )}
@@ -220,25 +511,37 @@ function LibraryTab({ claims }) {
 }
 
 // ---------------------------------------------------------------------------
-// SubmissionCard
+// StoreSubmissionCard
 // ---------------------------------------------------------------------------
-function SubmissionCard({ submission, orgName, onApprove, onReject }) {
+function StoreSubmissionCard({ submission, orgName, onApprove, onReject }) {
+  const isChain = submission.type === 'chain';
   return (
     <div style={styles.submissionCard}>
       <div style={styles.submissionImage}>
-        {submission.imageUrl ? (
-          <img src={submission.imageUrl} alt={submission.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        {submission.logoUrl ? (
+          <img src={submission.logoUrl} alt={submission.name}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             onError={e => e.target.style.display = 'none'} />
         ) : (
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M9 22V12h6v10" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         )}
       </div>
       <div style={styles.submissionBody}>
         <p style={styles.submissionName}>{submission.name}</p>
-        <p style={styles.submissionMeta}>{submission.unit} · ingediend door <strong>{orgName}</strong></p>
+        <p style={styles.submissionMeta}>
+          <span style={{
+            fontSize: '0.72rem', fontWeight: '700',
+            color: isChain ? '#2E7D32' : '#1565C0',
+            backgroundColor: isChain ? '#E8F5E9' : '#E3F2FD',
+            padding: '0.1rem 0.4rem', borderRadius: '20px',
+          }}>
+            {isChain ? 'Keten' : 'Winkel'}
+          </span>
+          {' '}· ingediend door <strong>{orgName}</strong>
+        </p>
       </div>
       <div style={styles.submissionActions}>
         <button style={styles.approveButton} onClick={onApprove}>✓ Goedkeuren</button>
@@ -249,9 +552,162 @@ function SubmissionCard({ submission, orgName, onApprove, onReject }) {
 }
 
 // ---------------------------------------------------------------------------
+// CentralStoreCard
+// ---------------------------------------------------------------------------
+function CentralStoreCard({ store, onDelete }) {
+  const isChain = store.type === 'chain';
+  return (
+    <div style={styles.card}>
+      <div style={{
+        ...styles.cardAvatar,
+        borderRadius: '8px',
+        backgroundColor: '#f5f5f5',
+        overflow: 'hidden',
+      }}>
+        {store.logoUrl ? (
+          <img src={store.logoUrl} alt={store.name}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            onError={e => e.target.style.display = 'none'} />
+        ) : (
+          <span style={{ fontSize: '1.25rem' }}>🏪</span>
+        )}
+      </div>
+      <div style={styles.cardBody}>
+        <p style={styles.cardName}>{store.name}</p>
+        <p style={styles.cardSub}>
+          <span style={{
+            fontSize: '0.72rem', fontWeight: '700',
+            color: isChain ? '#2E7D32' : '#1565C0',
+            backgroundColor: isChain ? '#E8F5E9' : '#E3F2FD',
+            padding: '0.1rem 0.4rem', borderRadius: '20px',
+          }}>
+            {isChain ? 'Keten' : 'Winkel'}
+          </span>
+        </p>
+      </div>
+      <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SubmissionCard
+// ---------------------------------------------------------------------------
+function SubmissionCard({ submission, orgName, onApprove, onReject, centralCategories }) {
+  const hasCat = !!submission.orgCategoryId;
+
+  // Berekend uit live centralCategories-state: detecteert ook categorieën die net werden aangemaakt
+  const matchingCentralCat = hasCat && submission.orgCategoryName
+    ? centralCategories.find(c =>
+        c.id === submission.orgCategoryCentralId ||
+        c.name.toLowerCase().trim() === submission.orgCategoryName.toLowerCase().trim()
+      )
+    : null;
+  const catAlreadyCentral = !!matchingCentralCat;
+
+  // Gebruikerskeuze (enkel relevant als !catAlreadyCentral)
+  const [userCatAction, setUserCatAction] = useState('new');
+  const [catSelectId, setCatSelectId] = useState('');
+
+  // Effectieve actie: als de categorie al centraal staat, gebruik dat — anders de keuze van de gebruiker
+  const catAction = catAlreadyCentral ? 'existing_auto' : (hasCat ? userCatAction : 'none');
+
+  function getResolvedCategoryDecision() {
+    if (!hasCat || catAction === 'none') return null;
+    if (catAction === 'existing_auto') return matchingCentralCat.id;
+    if (catAction === 'new') return '__create__';
+    if (catAction === 'existing') return catSelectId || null;
+    return null;
+  }
+
+  return (
+    <div style={{ ...styles.submissionCard, flexDirection: 'column', alignItems: 'stretch', gap: '0.75rem' }}>
+      {/* Product info row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+        <div style={styles.submissionImage}>
+          {submission.imageUrl ? (
+            <img src={submission.imageUrl} alt={submission.name}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={e => e.target.style.display = 'none'} />
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={styles.submissionName}>{submission.name}</p>
+          <p style={styles.submissionMeta}>{submission.unit} · ingediend door <strong>{orgName}</strong></p>
+        </div>
+      </div>
+
+      {/* Category resolution */}
+      {hasCat && (
+        <div style={{ backgroundColor: '#fafafa', borderRadius: '8px', padding: '0.65rem 0.75rem', border: '1px solid #eee' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
+            {submission.orgCategoryIconUrl && (
+              <img src={submission.orgCategoryIconUrl} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }} referrerPolicy="no-referrer" />
+            )}
+            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#1a1a1a' }}>
+              {submission.orgCategoryName}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#aaa' }}>— categorie van de organisatie</span>
+          </div>
+
+          {catAlreadyCentral ? (
+            <p style={{ fontSize: '0.78rem', color: '#2E7D32', margin: 0, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              ✓ Categorie is al beschikbaar in de centrale bibliotheek
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <p style={{ fontSize: '0.75rem', color: '#888', margin: '0 0 0.2rem', fontWeight: '600' }}>
+                Categorie nog niet centraal — wat wil je doen?
+              </p>
+              <label style={styles.radioLabel}>
+                <input type="radio" name={`cat-${submission.id}`}
+                  checked={userCatAction === 'new'} onChange={() => setUserCatAction('new')} />
+                Toevoegen aan centrale bibliotheek
+              </label>
+              <label style={styles.radioLabel}>
+                <input type="radio" name={`cat-${submission.id}`}
+                  checked={userCatAction === 'existing'} onChange={() => setUserCatAction('existing')} />
+                Koppelen aan bestaande centrale categorie
+              </label>
+              {userCatAction === 'existing' && (
+                <select value={catSelectId} onChange={e => setCatSelectId(e.target.value)}
+                  style={{ fontSize: '0.82rem', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1.5px solid #ddd', marginLeft: '1.4rem', backgroundColor: '#fff' }}>
+                  <option value="">— Kies een categorie —</option>
+                  {centralCategories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+              <label style={styles.radioLabel}>
+                <input type="radio" name={`cat-${submission.id}`}
+                  checked={userCatAction === 'none'} onChange={() => setUserCatAction('none')} />
+                Geen centrale categorie toewijzen
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+        <button style={styles.rejectButton} onClick={onReject}>✗ Weigeren</button>
+        <button style={styles.approveButton} onClick={() => onApprove(getResolvedCategoryDecision())}>
+          ✓ Goedkeuren
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // CentralProductCard
 // ---------------------------------------------------------------------------
-function CentralProductCard({ product, onDelete }) {
+function CentralProductCard({ product, onEdit, onDelete, centralCategories }) {
+  const category = centralCategories?.find(c => c.id === product.centralCategoryId);
   return (
     <div style={styles.card}>
       <div style={{ ...styles.cardAvatar, borderRadius: '8px', backgroundColor: '#f5f5f5', overflow: 'hidden' }}>
@@ -266,8 +722,239 @@ function CentralProductCard({ product, onDelete }) {
       <div style={styles.cardBody}>
         <p style={styles.cardName}>{product.name}</p>
         <p style={styles.cardSub}>{product.unit}</p>
+        {category && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' }}>
+            {category.iconUrl && (
+              <img src={category.iconUrl} alt="" style={{ width: 14, height: 14, objectFit: 'contain' }} referrerPolicy="no-referrer" />
+            )}
+            <span style={{ fontSize: '0.72rem', color: '#888' }}>{category.name}</span>
+          </div>
+        )}
       </div>
-      <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+      <div style={styles.cardActions}>
+        <button style={styles.manageButton} onClick={onEdit}>Bewerken</button>
+        <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CentralCategoryCard
+// ---------------------------------------------------------------------------
+function CentralCategoryCard({ category, onEdit, onDelete }) {
+  return (
+    <div style={styles.card}>
+      <div style={{ ...styles.cardAvatar, borderRadius: '8px', backgroundColor: category.color || '#E8F5E9', overflow: 'hidden' }}>
+        {category.iconUrl ? (
+          <img src={category.iconUrl} alt={category.name}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }}
+            onError={e => e.target.style.display = 'none'}
+            referrerPolicy="no-referrer" />
+        ) : (
+          <span style={{ fontSize: '1.25rem' }}>🏷️</span>
+        )}
+      </div>
+      <div style={styles.cardBody}>
+        <p style={styles.cardName}>{category.name}</p>
+      </div>
+      <div style={styles.cardActions}>
+        <button style={styles.manageButton} onClick={onEdit}>Bewerken</button>
+        <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CentralCategoryForm
+// ---------------------------------------------------------------------------
+function CentralCategoryForm({ category, onSave, onClose }) {
+  const [name, setName] = useState(category?.name || '');
+  const [iconUrl, setIconUrl] = useState(category?.iconUrl || '');
+  const [color, setColor] = useState(category?.color || '#4CAF50');
+  const [iconFile, setIconFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const previewUrl = iconFile ? URL.createObjectURL(iconFile) : iconUrl;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) { setError('Geef de categorie een naam.'); return; }
+    setSaving(true);
+    try {
+      await onSave({ name: name.trim(), iconUrl: iconUrl.trim(), color, iconFile });
+    } catch (err) {
+      setError('Opslaan mislukt: ' + err.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>{category?.id ? 'Categorie bewerken' : 'Nieuwe categorie'}</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>Naam</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              style={styles.input} placeholder="bijv. Groenten & Fruit" required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Icoontje — URL (bijv. ARASAAC)</label>
+            <input type="text" value={iconUrl}
+              onChange={e => { setIconUrl(e.target.value); setIconFile(null); }}
+              style={styles.input} placeholder="https://..." />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>of upload een afbeelding</label>
+            <input type="file" accept="image/*"
+              onChange={e => { setIconFile(e.target.files[0] || null); setIconUrl(''); }}
+              style={{ fontSize: '0.875rem' }} />
+          </div>
+          {previewUrl && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+              <img src={previewUrl} alt="" referrerPolicy="no-referrer"
+                style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: '6px', backgroundColor: color }} />
+              <span style={{ fontSize: '0.8rem', color: '#888' }}>Voorbeeld</span>
+            </div>
+          )}
+          <div style={styles.field}>
+            <label style={styles.label}>Kleur</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                style={{ width: '44px', height: '44px', border: '1.5px solid #ddd', borderRadius: '8px', cursor: 'pointer', padding: '2px' }} />
+              <span style={{ fontSize: '0.85rem', color: '#666' }}>{color}</span>
+            </div>
+          </div>
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CentralProductForm
+// ---------------------------------------------------------------------------
+const UNITS = ['stuks', 'pak', 'fles', 'blik', 'zak', 'doos', 'pot', 'kg'];
+
+function CentralProductForm({ product, centralCategories, onSave, onClose }) {
+  const [name, setName] = useState(product?.name || '');
+  const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
+  const [unit, setUnit] = useState(product?.unit || 'stuks');
+  const [centralCategoryId, setCentralCategoryId] = useState(product?.centralCategoryId || '');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
+  const [manualImageUrl, setManualImageUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef();
+
+  function handleImageChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Kies een afbeelding (jpg, png, webp).'); return; }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setImageUrl('');
+    setError('');
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) { setError('Geef het product een naam.'); return; }
+    setSaving(true);
+    try {
+      await onSave({ name: name.trim(), imageUrl, unit, centralCategoryId, imageFile });
+    } catch (err) {
+      setError('Opslaan mislukt: ' + err.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>{product?.id ? 'Product bewerken' : 'Nieuw product'}</h2>
+          <button style={styles.closeButton} onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={styles.form}>
+
+          {/* Klikbaar upload-vak */}
+          <div style={styles.imageUploadArea} onClick={() => fileInputRef.current.click()}>
+            {imagePreview ? (
+              <img src={imagePreview} alt="Voorvertoning" style={styles.imagePreview}
+                onError={e => e.target.style.display = 'none'} referrerPolicy="no-referrer" />
+            ) : (
+              <div style={styles.imagePlaceholder}>
+                <span style={{ fontSize: '2.5rem' }}>📷</span>
+                <span style={styles.imageUploadHint}>Tik om een foto te kiezen (optioneel)</span>
+              </div>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*"
+              onChange={handleImageChange} style={{ display: 'none' }} />
+          </div>
+
+          {/* Handmatige URL */}
+          <div style={styles.field}>
+            <label style={styles.label}>Of plak een afbeelding-URL</label>
+            <div style={styles.importRow}>
+              <input type="url" value={manualImageUrl}
+                onChange={e => setManualImageUrl(e.target.value)}
+                style={{ ...styles.input, flex: 1, fontSize: '0.85rem' }}
+                placeholder="https://..." />
+              <button type="button"
+                disabled={!manualImageUrl.trim()}
+                style={{ ...styles.importButton, opacity: !manualImageUrl.trim() ? 0.6 : 1 }}
+                onClick={() => {
+                  setImageUrl(manualImageUrl.trim());
+                  setImagePreview(manualImageUrl.trim());
+                  setImageFile(null);
+                  setManualImageUrl('');
+                }}>
+                ↓ Gebruik
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.field}>
+            <label style={styles.label}>Naam</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              style={styles.input} placeholder="bijv. Appels" required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Eenheid</label>
+            <select value={unit} onChange={e => setUnit(e.target.value)} style={styles.input}>
+              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Categorie</label>
+            <select value={centralCategoryId} onChange={e => setCentralCategoryId(e.target.value)} style={styles.input}>
+              <option value="">— Geen categorie —</option>
+              {centralCategories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {error && <p style={styles.errorText}>{error}</p>}
+          <button type="submit" disabled={saving}
+            style={{ ...styles.saveButton, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -337,6 +1024,87 @@ function NewOrgForm({ claims, onSave, onClose }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// AccountsTab
+// ---------------------------------------------------------------------------
+function AccountsTab({ claims }) {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null); // { success, message }
+
+  async function handleReset(e) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    if (!confirm(`Gebruiker "${email.trim()}" terugzetten naar privé-status? De gebruiker wordt direct uitgelogd.`)) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const { auth } = await import('../../lib/firebase');
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/admin/reset-user-to-private', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResult({ success: false, message: data.message || 'Er is een fout opgetreden.' });
+      } else {
+        setResult({ success: true, message: `Gebruiker is teruggezet naar privé-status${data.restoredOrgId ? ' en privé-organisatie hersteld' : ''}.` });
+        setEmail('');
+      }
+    } catch {
+      setResult({ success: false, message: 'Er is een fout opgetreden.' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Account terugzetten naar privé</p>
+      </div>
+      <p style={{ fontSize: '0.875rem', color: '#888', marginBottom: '1rem', lineHeight: 1.5 }}>
+        Gebruik dit wanneer een gebruiker onterecht aan een organisatie is gekoppeld.
+        De organisatiekoppeling en claims worden gereset; de gebruiker wordt direct uitgelogd.
+      </p>
+      <form onSubmit={handleReset} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '400px' }}>
+        <div style={styles.field}>
+          <label style={styles.label}>E-mailadres van de gebruiker</label>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            style={styles.input}
+            placeholder="gebruiker@voorbeeld.be"
+            required
+          />
+        </div>
+        {result && (
+          <p style={{
+            fontSize: '0.875rem',
+            margin: 0,
+            padding: '0.6rem 0.875rem',
+            borderRadius: '8px',
+            backgroundColor: result.success ? '#E8F5E9' : '#FDECEA',
+            color: result.success ? '#2E7D32' : '#C62828',
+          }}>
+            {result.message}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={loading}
+          style={{ ...styles.addButton, alignSelf: 'flex-start', opacity: loading ? 0.6 : 1 }}
+        >
+          {loading ? 'Bezig...' : 'Terugzetten naar privé'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default withRoleGuard(ROLES.APP_ADMIN, AdminDashboard);
 
 // ---------------------------------------------------------------------------
@@ -348,8 +1116,8 @@ const styles = {
   title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.2rem' },
   subtitle: { fontSize: '0.875rem', color: '#888', margin: 0 },
   signOutButton: { padding: '0.5rem 1rem', backgroundColor: 'transparent', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.875rem', color: '#666', cursor: 'pointer' },
-  tabs: { display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '2px solid #eee', paddingBottom: 0 },
-  tab: { padding: '0.6rem 1rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.95rem', fontWeight: '600', color: '#aaa', cursor: 'pointer' },
+  tabs: { display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '2px solid #eee', paddingBottom: 0, overflowX: 'auto', flexShrink: 0 },
+  tab: { padding: '0.6rem 1rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.95rem', fontWeight: '600', color: '#aaa', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
   tabActive: { color: '#1a1a1a', borderBottomColor: '#4CAF50' },
   subTabs: { display: 'flex', gap: '0.5rem', marginBottom: '1rem' },
   subTab: { padding: '0.5rem 0.875rem', backgroundColor: '#f0f0f0', border: 'none', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' },
@@ -380,6 +1148,13 @@ const styles = {
   submissionActions: { display: 'flex', flexDirection: 'column', gap: '0.35rem', flexShrink: 0 },
   approveButton: { padding: '0.35rem 0.65rem', backgroundColor: '#E8F5E9', color: '#2E7D32', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
   rejectButton: { padding: '0.35rem 0.65rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
+  radioLabel: { display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#444', cursor: 'pointer' },
+  imageUploadArea: { width: '100%', height: '180px', borderRadius: '12px', border: '2px dashed #ddd', backgroundColor: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden' },
+  imagePreview: { width: '100%', height: '100%', objectFit: 'cover' },
+  imagePlaceholder: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' },
+  imageUploadHint: { fontSize: '0.85rem', color: '#aaa' },
+  importRow: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
+  importButton: { padding: '0.75rem 0.875rem', backgroundColor: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
   centered: { display: 'flex', justifyContent: 'center', paddingTop: '3rem' },
   hint: { color: '#aaa', fontSize: '0.95rem', margin: 0 },
   modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },

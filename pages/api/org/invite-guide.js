@@ -88,7 +88,7 @@ export default async function handler(req, res) {
     });
 
     // Stel custom claims in
-    await adminAuth.setCustomUserClaims(userRecord.uid, { role, orgId });
+    await adminAuth.setCustomUserClaims(userRecord.uid, { role, orgId, orgType: 'organization' });
 
     // Maak Firestore member document aan
     await adminDb

@@ -33,6 +33,8 @@ import {
   ProductFactory,
   MemberFactory,
   GroupFactory,
+  StoreFactory,
+  CategoryFactory,
 } from '../../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +53,11 @@ function ListDetail({ claims }) {
   const [saving, setSaving] = useState(false);
   const [assignedMemberToken, setAssignedMemberToken] = useState(null);
   const [groupToken, setGroupToken] = useState(null);
+  const [stores, setStores] = useState({});
+  const [showReassignForm, setShowReassignForm] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [categories, setCategories] = useState({});
   const [showReassignForm, setShowReassignForm] = useState(false);
   const [members, setMembers] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -76,16 +83,27 @@ function ListDetail({ claims }) {
       const listData = { id: listSnap.id, ...listSnap.data() };
       setList(listData);
       if (listData.groupToken) setGroupToken(listData.groupToken);
-      setItems(itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const itemsData = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setItems(itemsData);
+      
+      // Laad winkels voor deze organisatie
+      const storesSnap = await StoreFactory.getAll(orgId);
+      const storeMap = {};
+      storesSnap.docs.forEach(d => { storeMap[d.id] = { id: d.id, ...d.data() }; });
+      setStores(storeMap);
 
-      // Laad members en groups voor hertoewijzing
-      const [membersSnap, groupsSnap] = await Promise.all([
+      // Laad members, groups en categorieën
+      const [membersSnap, groupsSnap, catSnap] = await Promise.all([
         MemberFactory.getByRole(orgId, 'shopper'),
         GroupFactory.getAll(orgId),
+        CategoryFactory.getAll(orgId),
       ]);
       setMembers(membersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setGroups(groupsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
+      const catMap = {};
+      catSnap.docs.forEach(d => { catMap[d.id] = { id: d.id, ...d.data() }; });
+      setCategories(catMap);
+      
       // Resolve assigned label
       if (listData.assignedTo?.type === 'member') {
         const memberSnap = await MemberFactory.getById(orgId, listData.assignedTo.id);
@@ -119,11 +137,20 @@ function ListDetail({ claims }) {
 
     try {
       const newItems = await Promise.all(
-        selectedProducts.map((product, index) =>
-          ListItemFactory.create(orgId, listId, {
+        selectedProducts.map((product, index) => {
+          const store = product.storeId ? stores[product.storeId] : null;
+          const category = product.categoryId ? categories[product.categoryId] : null;
+          return ListItemFactory.create(orgId, listId, {
             productId: product.id,
             productName: product.name,
             productImageUrl: product.imageUrl,
+            storeId: product.storeId || null,
+            storeName: store?.name || null,
+            storeType: store?.type || null,
+            storeLogoUrl: store?.logoUrl || null,
+            categoryId: product.categoryId || null,
+            categoryName: category?.name || null,
+            categoryIconUrl: category?.iconUrl || null,
             quantity: 1,
             order: startOrder + index,
           }).then((ref) => ({
@@ -131,11 +158,18 @@ function ListDetail({ claims }) {
             productId: product.id,
             productName: product.name,
             productImageUrl: product.imageUrl,
+            storeId: product.storeId || null,
+            storeName: store?.name || null,
+            storeType: store?.type || null,
+            storeLogoUrl: store?.logoUrl || null,
+            categoryId: product.categoryId || null,
+            categoryName: category?.name || null,
+            categoryIconUrl: category?.iconUrl || null,
             quantity: 1,
             order: startOrder + index,
             checked: false,
-          }))
-        )
+          }));
+        })
       );
       setItems((prev) => [...prev, ...newItems]);
     } catch (err) {
@@ -302,6 +336,7 @@ function ListDetail({ claims }) {
               index={index}
               total={items.length}
               isEditable={isEditable}
+              categories={categories}
               onQuantityChange={(qty) => handleQuantityChange(item.id, qty)}
               onRemove={() => handleRemoveItem(item.id)}
               onMoveUp={() => handleMove(index, -1)}
@@ -384,6 +419,7 @@ function ListDetail({ claims }) {
         <ProductPicker
           orgId={orgId}
           existingProductIds={items.map((i) => i.productId)}
+          categories={categories}
           onAdd={handleAddProducts}
           onClose={() => setShowProductPicker(false)}
         />
@@ -410,7 +446,11 @@ function ListDetail({ claims }) {
 // ---------------------------------------------------------------------------
 // ItemRow
 // ---------------------------------------------------------------------------
-function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, onMoveUp, onMoveDown }) {
+function ItemRow({ item, index, total, isEditable, categories, onQuantityChange, onRemove, onMoveUp, onMoveDown }) {
+  // Gebruik snapshot als beschikbaar, anders live opzoeken
+  const categoryName = item.categoryName || categories[item.categoryId]?.name || null;
+  const categoryIconUrl = item.categoryIconUrl || categories[item.categoryId]?.iconUrl || null;
+
   return (
     <div style={styles.itemRow}>
       {/* Image */}
@@ -418,24 +458,41 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
         <ProductImage url={item.productImageUrl} alt={item.productName} style={styles.itemImage} />
       </div>
 
-      {/* Name */}
+      {/* Name + winkel + categorie */}
       <div style={styles.itemBody}>
         <p style={styles.itemName}>{item.productName}</p>
+        {item.storeName && (
+          <div style={styles.itemStoreRow}>
+            {item.storeLogoUrl ? (
+              <img src={item.storeLogoUrl} alt={item.storeName}
+                style={styles.itemStoreLogo}
+                onError={e => e.target.style.display = 'none'}
+                referrerPolicy="no-referrer" />
+            ) : (
+              <span style={{ fontSize: '0.75rem' }}>
+                {item.storeType === 'chain' ? '🏪' : '📍'}
+              </span>
+            )}
+            <span style={styles.itemStoreName}>{item.storeName}</span>
+          </div>
+        )}
+        {categoryName && (
+          <div style={styles.itemCategoryBadge}>
+            {categoryIconUrl && (
+              <img src={categoryIconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
+            )}
+            <span style={styles.itemCategoryLabel}>{categoryName}</span>
+          </div>
+        )}
         {item.checked && <p style={styles.itemChecked}>✓ Genomen</p>}
       </div>
 
       {/* Quantity */}
       {isEditable ? (
         <div style={styles.qtyControl}>
-          <button
-            style={styles.qtyButton}
-            onClick={() => onQuantityChange(item.quantity - 1)}
-          >−</button>
+          <button style={styles.qtyButton} onClick={() => onQuantityChange(item.quantity - 1)}>−</button>
           <span style={styles.qtyValue}>{item.quantity}</span>
-          <button
-            style={styles.qtyButton}
-            onClick={() => onQuantityChange(item.quantity + 1)}
-          >+</button>
+          <button style={styles.qtyButton} onClick={() => onQuantityChange(item.quantity + 1)}>+</button>
         </div>
       ) : (
         <span style={styles.qtyDisplay}>× {item.quantity}</span>
@@ -444,16 +501,10 @@ function ItemRow({ item, index, total, isEditable, onQuantityChange, onRemove, o
       {/* Reorder & delete */}
       {isEditable && (
         <div style={styles.itemControls}>
-          <button
-            style={{ ...styles.moveButton, opacity: index === 0 ? 0.3 : 1 }}
-            onClick={onMoveUp}
-            disabled={index === 0}
-          >↑</button>
-          <button
-            style={{ ...styles.moveButton, opacity: index === total - 1 ? 0.3 : 1 }}
-            onClick={onMoveDown}
-            disabled={index === total - 1}
-          >↓</button>
+          <button style={{ ...styles.moveButton, opacity: index === 0 ? 0.3 : 1 }}
+            onClick={onMoveUp} disabled={index === 0}>↑</button>
+          <button style={{ ...styles.moveButton, opacity: index === total - 1 ? 0.3 : 1 }}
+            onClick={onMoveDown} disabled={index === total - 1}>↓</button>
           <button style={styles.removeButton} onClick={onRemove}>✕</button>
         </div>
       )}
@@ -482,11 +533,26 @@ function StatusBadge({ status }) {
 // ---------------------------------------------------------------------------
 // ProductPicker (modal)
 // ---------------------------------------------------------------------------
-function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
+function fuzzyMatch(needle, haystack) {
+  if (!needle) return true;
+  const n = needle.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const h = haystack.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (h.includes(n)) return true;
+  let ni = 0;
+  for (let hi = 0; hi < h.length && ni < n.length; hi++) {
+    if (h[hi] === n[ni]) ni++;
+  }
+  return ni === n.length;
+}
+
+function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }) {
   const [products, setProducts] = useState([]);
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [gridExpanded, setGridExpanded] = useState(false);
+  const [pendingCategoryIds, setPendingCategoryIds] = useState(new Set());
+  const [appliedCategoryIds, setAppliedCategoryIds] = useState(new Set());
 
   useEffect(() => {
     ProductFactory.getAll(orgId).then((snap) => {
@@ -503,11 +569,47 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
     );
   }
 
-  const filtered = products.filter(
-    (p) =>
-      !existingProductIds.includes(p.id) &&
-      p.name.toLowerCase().includes(search.toLowerCase())
-  );
+  function openGrid() {
+    setPendingCategoryIds(new Set(appliedCategoryIds));
+    setGridExpanded(true);
+  }
+
+  function applyCategories() {
+    setAppliedCategoryIds(new Set(pendingCategoryIds));
+    setGridExpanded(false);
+  }
+
+  function togglePending(catId) {
+    setPendingCategoryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(catId)) next.delete(catId);
+      else next.add(catId);
+      return next;
+    });
+  }
+
+  function removeApplied(catId) {
+    setAppliedCategoryIds(prev => {
+      const next = new Set(prev);
+      next.delete(catId);
+      return next;
+    });
+  }
+
+  const availableProducts = products.filter(p => !existingProductIds.includes(p.id));
+  const usedCategoryIds = new Set(availableProducts.map(p => p.categoryId).filter(Boolean));
+  const filterCategories = Object.values(categories)
+    .filter(c => usedCategoryIds.has(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+
+  const appliedCats = filterCategories.filter(c => appliedCategoryIds.has(c.id));
+
+  const filtered = availableProducts.filter((p) => {
+    const cat = p.categoryId ? categories[p.categoryId] : null;
+    const matchesSearch = !search || fuzzyMatch(search, p.name) || (cat && fuzzyMatch(search, cat.name));
+    const matchesCategory = appliedCategoryIds.size === 0 || appliedCategoryIds.has(p.categoryId);
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
@@ -519,24 +621,82 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
 
         <input
           type="search"
-          placeholder="Zoeken..."
+          placeholder="Zoeken op naam of categorie..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ ...styles.searchInput, marginBottom: '0.75rem', flexShrink: 0 }}
+          style={{ ...styles.searchInput, marginBottom: '0.5rem', flexShrink: 0 }}
         />
 
-        {/* Scrollbare lijst met vaste hoogte */}
+        {/* Categorie filter */}
+        {filterCategories.length > 0 && (
+          <div style={{ flexShrink: 0 }}>
+            {!gridExpanded && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', paddingBottom: '0.5rem' }}>
+                <button style={styles.categoryToggleButton} onClick={openGrid}>
+                  <span>Categorieën</span>
+                  <span style={{ fontSize: '0.75rem' }}>▼</span>
+                </button>
+                {appliedCats.map(cat => (
+                  <span key={cat.id} style={styles.activeFilterChip}>
+                    {cat.iconUrl && <img src={cat.iconUrl} alt="" style={styles.activeFilterChipIcon} referrerPolicy="no-referrer" />}
+                    <span>{cat.name}</span>
+                    <button style={styles.pillRemoveBtn} onClick={() => removeApplied(cat.id)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {gridExpanded && (
+              <div style={{ paddingBottom: '0.5rem' }}>
+                <div style={styles.categoryGrid}>
+                  {filterCategories.map(cat => {
+                    const isPending = pendingCategoryIds.has(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        style={{
+                          ...styles.categoryGridTile,
+                          ...(isPending ? styles.categoryGridTileActive : {}),
+                        }}
+                        onClick={() => togglePending(cat.id)}
+                      >
+                        <div style={{ ...styles.categoryGridIconBox, backgroundColor: (cat.color || '#4CAF50') + '33' }}>
+                          {cat.iconUrl
+                            ? <img src={cat.iconUrl} alt="" style={styles.categoryGridIcon} referrerPolicy="no-referrer" />
+                            : <span style={{ fontSize: '1.75rem' }}>🏷️</span>}
+                        </div>
+                        <span style={styles.categoryGridLabel}>{cat.name}</span>
+                        {isPending && <span style={styles.categoryGridCheck}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.4rem' }}>
+                  <button style={styles.categoryToggleButton} onClick={() => setGridExpanded(false)}>
+                    Annuleren
+                  </button>
+                  <button style={styles.applyButton} onClick={applyCategories}>
+                    {pendingCategoryIds.size === 0 ? 'Alle tonen' : `${pendingCategoryIds.size} toepassen`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Scrollbare productlijst */}
         <div style={styles.pickerScrollArea}>
           {loading ? (
             <p style={styles.hint}>Laden...</p>
           ) : filtered.length === 0 ? (
             <p style={styles.hint}>
-              {search ? 'Geen producten gevonden.' : 'Alle producten zijn al toegevoegd.'}
+              {search || appliedCategoryIds.size > 0 ? 'Geen producten gevonden.' : 'Alle producten zijn al toegevoegd.'}
             </p>
           ) : (
             <div style={styles.pickerList}>
               {filtered.map((product) => {
                 const isSelected = !!selected.find((p) => p.id === product.id);
+                const category = product.categoryId ? categories[product.categoryId] : null;
                 return (
                   <div
                     key={product.id}
@@ -554,7 +714,17 @@ function ProductPicker({ orgId, existingProductIds, onAdd, onClose }) {
                         <div style={styles.itemImagePlaceholder}>🛍️</div>
                       )}
                     </div>
-                    <p style={styles.pickerName}>{product.name}</p>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={styles.pickerName}>{product.name}</p>
+                      {category && (
+                        <div style={styles.itemCategoryBadge}>
+                          {category.iconUrl && (
+                            <img src={category.iconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
+                          )}
+                          <span style={styles.itemCategoryLabel}>{category.name}</span>
+                        </div>
+                      )}
+                    </div>
                     <div style={{
                       ...styles.checkbox,
                       backgroundColor: isSelected ? '#4CAF50' : '#fff',
@@ -799,8 +969,8 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ListDetail);
 const styles = {
   page: {
     minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-    fontFamily: 'system-ui, sans-serif',
+    backgroundColor: '#F4F8FC',
+    fontFamily: "'Nunito', system-ui, sans-serif",
     padding: '1.5rem',
     maxWidth: '600px',
     margin: '0 auto',
@@ -810,18 +980,21 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: '1.5rem',
+    backgroundColor: '#5B9BD5',
+    margin: '-1.5rem -1.5rem 1.5rem -1.5rem',
+    padding: '1.25rem 1.5rem',
     gap: '0.5rem',
   },
   backButton: {
     background: 'none',
     border: 'none',
     fontSize: '0.9rem',
-    color: '#4CAF50',
+    color: '#fff',
     cursor: 'pointer',
     padding: '0.25rem 0',
-    fontWeight: '600',
+    fontWeight: '700',
     whiteSpace: 'nowrap',
+    fontFamily: 'inherit',
   },
   headerCenter: {
     flex: 1,
@@ -829,11 +1002,11 @@ const styles = {
   },
   title: {
     fontSize: '1.1rem',
-    fontWeight: '700',
-    color: '#1a1a1a',
+    fontWeight: '800',
+    color: '#fff',
     margin: '0 0 0.2rem',
   },
-  assignedLabel:{ fontSize: '0.8rem', color: '#888', margin: 0 },
+  assignedLabel: { fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', margin: 0 },
   statusBadge: {
     fontSize: '0.75rem',
     fontWeight: '700',
@@ -1010,13 +1183,14 @@ const styles = {
   },
   activateButton: {
     padding: '0.875rem',
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#5B9BD5',
     color: '#fff',
     border: 'none',
     borderRadius: '10px',
     fontSize: '1rem',
     fontWeight: '700',
     cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   shopperViewButton: {
     padding: '0.75rem',
@@ -1159,13 +1333,14 @@ const styles = {
   addButton: {
     width: '100%',
     padding: '0.875rem',
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#5B9BD5',
     color: '#fff',
     border: 'none',
     borderRadius: '10px',
     fontSize: '1rem',
     fontWeight: '700',
     cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   centered: {
     display: 'flex',
@@ -1173,11 +1348,30 @@ const styles = {
     justifyContent: 'center',
     height: '100vh',
   },
-
+  itemStoreRow: { display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' },
+  itemStoreLogo: { width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px' },
+  itemStoreName: { fontSize: '0.75rem', color: '#888', fontWeight: '500' },
+  itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem', marginTop: '0.2rem' },
+  itemCategoryIcon: { width: '14px', height: '14px', objectFit: 'contain', flexShrink: 0 },
+  itemCategoryLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
+  categoryGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', paddingBottom: '0.5rem', flexShrink: 0 },
+  categoryGridTile: { position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, borderRadius: '12px', border: '2px solid #eee', backgroundColor: '#fff', cursor: 'pointer', overflow: 'hidden' },
+  categoryGridTileActive: { borderColor: '#5B9BD5', borderWidth: '2.5px', backgroundColor: '#EBF4FF' },
+  categoryGridIconBox: { width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  categoryGridIcon: { width: '60%', height: '60%', objectFit: 'contain' },
+  categoryGridLabel: { width: '100%', padding: '0.3rem 0.25rem', fontSize: '0.72rem', fontWeight: '600', color: '#444', textAlign: 'center', lineHeight: 1.2, backgroundColor: 'transparent' },
+  categoryGridCheck: { position: 'absolute', top: '4px', right: '4px', width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#5B9BD5', color: '#fff', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' },
+  categoryToggleButton: { display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', borderRadius: '20px', border: '1.5px solid #ddd', backgroundColor: '#f5f5f5', cursor: 'pointer', fontSize: '0.875rem', fontWeight: '600', color: '#666' },
+  applyButton: { display: 'inline-flex', alignItems: 'center', padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', backgroundColor: '#5B9BD5', cursor: 'pointer', fontSize: '0.875rem', fontWeight: '700', color: '#fff', fontFamily: 'inherit' },
+  activeFilterChip: { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.5rem 0.35rem 0.75rem', borderRadius: '20px', border: '1.5px solid #5B9BD5', backgroundColor: '#EBF4FF', fontSize: '0.85rem', fontWeight: '600', color: '#3A7FC1' },
+  activeFilterChipIcon: { width: '16px', height: '16px', objectFit: 'contain', flexShrink: 0 },
+  pillRemoveBtn: { background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.1rem', fontSize: '1rem', color: '#3A7FC1', lineHeight: 1, display: 'inline-flex', alignItems: 'center', flexShrink: 0 },
+  activeFilterChipClose: {},
   assignedLabelButton: {
   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   gap: '0.3rem',
   },
+  
   assignedEditHint: { fontSize: '0.7rem', color: '#bbb' },
 };

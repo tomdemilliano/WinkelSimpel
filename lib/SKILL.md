@@ -60,6 +60,7 @@ Winkel Simpel stelt mensen met een beperking in staat om zelfstandig boodschappe
 /pages
   index.js               → redirect op basis van rol
   login.js               → inlogpagina (guide/admin)
+  register.js            → zelfregistratie (stand-alone gebruikers)
   scan.js                → QR-scan pagina (shopper)
   /admin
     index.js             → organisatiebeheer
@@ -70,6 +71,7 @@ Winkel Simpel stelt mensen met een beperking in staat om zelfstandig boodschappe
     lists.js             → lijstjes overzicht
     list/[id].js         → lijstje detail & toewijzen
     groups.js            → groepen & leden
+    request-access.js    → aansluiten bij een organisatie (stand-alone gebruikers)
     qr/[shopperId].js    → QR-kaartje afdrukken
   /shop
     [listId].js          → shopperinterface (volledig scherm)

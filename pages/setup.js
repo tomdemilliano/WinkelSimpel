@@ -11,6 +11,7 @@
  * If no setup key is configured, the page is disabled.
  */
 
+
 import { useState } from 'react';
 
 const SETUP_KEY = process.env.NEXT_PUBLIC_SETUP_KEY;

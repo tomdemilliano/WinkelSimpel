@@ -7,13 +7,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { GroupFactory, MemberFactory } from '../../lib/dbSchema';
+import { auth } from '../../lib/firebase';
+import { GroupFactory, MemberFactory, AccessRequestFactory } from '../../lib/dbSchema';
 import { generateQrToken } from '../../lib/qr';
 
 function GroupsAndMembers({ claims }) {
   const router = useRouter();
-  const { orgId, uid, role } = claims;
+  const { orgId, uid, role, orgType } = claims;
   const isOrgAdmin = role === 'org_admin';
+  const isPrivate = orgType === 'private';
 
   const [tab, setTab] = useState('shoppers');
   const [groups, setGroups] = useState([]);
@@ -66,7 +68,32 @@ function GroupsAndMembers({ claims }) {
     { id: 'shoppers', label: 'Shoppers' },
     { id: 'groups', label: 'Groepen' },
     ...(isOrgAdmin ? [{ id: 'guides', label: 'Begeleiders' }] : []),
+    ...(isOrgAdmin ? [{ id: 'requests', label: 'Toegangsverzoeken' }] : []),
   ];
+
+  if (isPrivate) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.header}>
+          <button style={styles.backButton} onClick={() => router.push('/guide')}>← Terug</button>
+          <h1 style={styles.title}>Groepen & leden</h1>
+          <div style={{ width: 60 }} />
+        </div>
+        <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+          <p style={{ fontSize: '3rem', margin: '0 0 1rem' }}>👤</p>
+          <p style={{ color: '#666', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+            Als zelfstandig gebruiker heb je geen shoppers of groepen.
+          </p>
+          <button
+            style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E8EAF6', color: '#3949AB', border: 'none', borderRadius: '10px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}
+            onClick={() => router.push('/guide/request-access')}
+          >
+            Aansluiten bij een organisatie →
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.page}>
@@ -115,6 +142,11 @@ function GroupsAndMembers({ claims }) {
       {/* Begeleiders tab */}
       {tab === 'guides' && isOrgAdmin && (
         <GuidesTab orgId={orgId} uid={uid} />
+      )}
+
+      {/* Toegangsverzoeken tab */}
+      {tab === 'requests' && isOrgAdmin && (
+        <RequestsTab orgId={orgId} callerUid={uid} />
       )}
     </div>
   );
@@ -237,8 +269,22 @@ function GuidesTab({ orgId, uid }) {
 
   async function handleDelete(guide) {
     if (!confirm(`Begeleider "${guide.firstName} ${guide.lastName}" verwijderen?`)) return;
-    await MemberFactory.delete(orgId, guide.id);
-    setGuides(prev => prev.filter(g => g.id !== guide.id));
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/admin/remove-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ orgId, memberId: guide.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.message || 'Verwijderen mislukt.');
+        return;
+      }
+      setGuides(prev => prev.filter(g => g.id !== guide.id));
+    } catch {
+      alert('Verwijderen mislukt. Probeer opnieuw.');
+    }
   }
 
   const ROLE_CONFIG = {
@@ -784,23 +830,135 @@ function NewGuideForm({ orgId, createdBy, onSave, onClose }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// RequestsTab — toegangsverzoeken voor org_admin
+// ---------------------------------------------------------------------------
+function RequestsTab({ orgId, callerUid }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => { loadRequests(); }, [orgId]);
+
+  async function loadRequests() {
+    setLoading(true);
+    try {
+      const snap = await AccessRequestFactory.getByOrg(orgId);
+      setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  }
+
+  async function handleAction(requestId, action) {
+    setActionError('');
+    try {
+      const { getAuth } = await import('firebase/auth');
+      const { auth } = await import('../../lib/firebase');
+      const idToken = await getAuth(auth.app).currentUser?.getIdToken();
+      const res = await fetch('/api/org/handle-access-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ requestId, action }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setActionError(data.message || 'Er is een fout opgetreden.');
+        return;
+      }
+      await loadRequests();
+    } catch {
+      setActionError('Er is een fout opgetreden. Probeer opnieuw.');
+    }
+  }
+
+  const pending = requests.filter((r) => r.status === 'pending');
+  const processed = requests.filter((r) => r.status !== 'pending');
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={styles.sectionHeader}>
+        <p style={styles.sectionTitle}>Openstaand ({pending.length})</p>
+      </div>
+      {actionError && (
+        <p style={{ ...styles.errorText, marginBottom: '0.75rem' }}>{actionError}</p>
+      )}
+      {loading ? (
+        <p style={styles.emptyHint}>Laden...</p>
+      ) : pending.length === 0 ? (
+        <p style={styles.emptyHint}>Geen openstaande verzoeken.</p>
+      ) : (
+        <div style={styles.cardList}>
+          {pending.map((r) => (
+            <div key={r.id} style={{ ...styles.card, flexDirection: 'column', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <div>
+                <p style={styles.cardName}>{r.requestingUserName}</p>
+                <p style={styles.cardSub}>{r.requestingUserEmail}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  style={{ padding: '0.4rem 0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}
+                  onClick={() => handleAction(r.id, 'approve')}
+                >
+                  Goedkeuren
+                </button>
+                <button
+                  style={{ padding: '0.4rem 0.875rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' }}
+                  onClick={() => handleAction(r.id, 'reject')}
+                >
+                  Weigeren
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {processed.length > 0 && (
+        <>
+          <div style={{ ...styles.sectionHeader, marginTop: '1.5rem' }}>
+            <p style={styles.sectionTitle}>Verwerkt</p>
+          </div>
+          <div style={styles.cardList}>
+            {processed.map((r) => (
+              <div key={r.id} style={styles.card}>
+                <div style={styles.cardBody}>
+                  <p style={styles.cardName}>{r.requestingUserName}</p>
+                  <p style={styles.cardSub}>{r.requestingUserEmail}</p>
+                </div>
+                <span style={{
+                  fontSize: '0.75rem', fontWeight: '600', padding: '0.3rem 0.7rem', borderRadius: '20px',
+                  ...(r.status === 'approved'
+                    ? { backgroundColor: '#E8F5E9', color: '#2E7D32' }
+                    : { backgroundColor: '#FFEBEE', color: '#C62828' }),
+                }}>
+                  {r.status === 'approved' ? 'Goedgekeurd' : 'Geweigerd'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GroupsAndMembers);
 
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
-  backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#4CAF50', cursor: 'pointer', fontWeight: '600', padding: '0.25rem 0' },
-  title: { fontSize: '1.2rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
+  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1.25rem -1.5rem', padding: '1.25rem 1.5rem' },
+  backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#fff', cursor: 'pointer', fontWeight: '700', padding: '0.25rem 0', fontFamily: 'inherit' },
+  title: { fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 },
   tabs: { display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '2px solid #eee' },
   tab: { flex: 1, padding: '0.65rem 0.5rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', fontWeight: '600', color: '#aaa', cursor: 'pointer' },
-  tabActive: { color: '#1a1a1a', borderBottomColor: '#4CAF50' },
+  tabActive: { color: '#1A2B3C', borderBottomColor: '#5B9BD5' },
   tabContent: { paddingTop: '0.25rem' },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' },
   sectionTitle: { fontSize: '0.8rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 },
-  sectionAddButton: { padding: '0.4rem 0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' },
+  sectionAddButton: { padding: '0.4rem 0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
   cardList: { display: 'flex', flexDirection: 'column', gap: '0.6rem' },
   card: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.75rem' },
   cardAvatar: { width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#E8F5E9', color: '#2E7D32', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '1rem', flexShrink: 0 },
@@ -819,7 +977,7 @@ const styles = {
   tag: { display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#E8F5E9', color: '#2E7D32', borderRadius: '20px', padding: '0.25rem 0.6rem 0.25rem 0.75rem', fontSize: '0.82rem', fontWeight: '600' },
   tagRemove: { background: 'none', border: 'none', cursor: 'pointer', color: '#2E7D32', fontSize: '0.75rem', padding: '0', lineHeight: 1, opacity: 0.7 },
   searchInput: { width: '100%', padding: '0.6rem 0.875rem', borderRadius: '8px', border: '1.5px solid #ddd', fontSize: '0.9rem', backgroundColor: '#fff', boxSizing: 'border-box' },
-  suggestions: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1.5px solid #4CAF50', borderTop: 'none', borderRadius: '0 0 8px 8px', zIndex: 50, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' },
+  suggestions: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', border: '1.5px solid #5B9BD5', borderTop: 'none', borderRadius: '0 0 8px 8px', zIndex: 50, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' },
   suggestion: { padding: '0.7rem 0.875rem', cursor: 'pointer', fontSize: '0.9rem', color: '#1a1a1a', borderBottom: '1px solid #f5f5f5' },
   emptyHint: { fontSize: '0.85rem', color: '#bbb', margin: '0.5rem 0', padding: '0.75rem', backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #eee' },
   modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 },
@@ -833,5 +991,5 @@ const styles = {
   input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', backgroundColor: '#fff' },
   formHint: { fontSize: '0.825rem', color: '#aaa', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fafafa', borderRadius: '8px' },
   errorText: { color: '#c62828', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#FFEBEE', borderRadius: '8px' },
-  saveButton: { padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.5rem' },
+  saveButton: { padding: '0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', marginTop: '0.5rem', fontFamily: 'inherit' },
 };

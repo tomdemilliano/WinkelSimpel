@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { ListItemFactory } from '../lib/dbSchema';
 
 export default function ShopPageClient() {
   const router = useRouter();
@@ -91,6 +92,32 @@ export default function ShopPageClient() {
     }
   }
 
+  async function handleUncheck(indexToUncheck) {
+    if (marking) return;
+    const idx = indexToUncheck ?? currentIndex;
+    const item = items[idx];
+    if (!item || !item.checked) return;
+    const { orgId, listId, token } = sessionRef.current;
+
+    setMarking(true);
+    const prevItems = items;
+    const updated = items.map((i, n) => n === idx ? { ...i, checked: false } : i);
+    setItems(updated);
+    if (completed) { setCompleted(false); setCurrentIndex(idx); }
+
+    try {
+      await fetch('/api/shopper/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId, listId, itemId: item.id, token, checked: false }),
+      });
+    } catch {
+      setItems(prevItems);
+      if (completed) setCompleted(true);
+    }
+    setMarking(false);
+  }
+
   function goNext() {
     const next = items.findIndex((i, n) => n > currentIndex && !i.checked);
     if (next >= 0) setCurrentIndex(next);
@@ -116,6 +143,28 @@ export default function ShopPageClient() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
   }, [currentIndex, view]);
+
+  // Realtime sync met andere shoppers via Firestore onSnapshot
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    const { orgId, listId } = sessionRef.current;
+
+    const unsubscribe = ListItemFactory.subscribe(orgId, listId, (serverItems) => {
+      setItems(prev => {
+        let changed = false;
+        const merged = prev.map(item => {
+          const s = serverItems.find(x => x.id === item.id);
+          if (s && s.checked !== item.checked) { changed = true; return { ...item, checked: s.checked }; }
+          return item;
+        });
+        if (!changed) return prev;
+        if (merged.every(i => i.checked)) setTimeout(() => setCompleted(true), 400);
+        return merged;
+      });
+    });
+
+    return unsubscribe;
+  }, [phase]);
 
   if (phase === 'booting' || phase === 'loading') {
     return (
@@ -169,7 +218,7 @@ export default function ShopPageClient() {
             <div
               key={item.id}
               style={{ ...styles.overviewCard, ...(item.checked ? styles.overviewCardDone : {}) }}
-              onClick={() => !item.checked && handleTaken(idx)}
+              onClick={() => item.checked ? handleUncheck(idx) : handleTaken(idx)}
             >
               {/* Afbeelding */}
               <div style={styles.overviewImageWrapper}>
@@ -178,6 +227,11 @@ export default function ShopPageClient() {
                 ) : (
                   <div style={styles.overviewImagePlaceholder}>
                     <CartIcon size={36} color={item.checked ? '#aaa' : '#4CAF50'} />
+                  </div>
+                )}
+                {!item.checked && item.categoryIconUrl && (
+                  <div style={styles.overviewCategoryIconOverlay}>
+                    <img src={item.categoryIconUrl} alt={item.categoryName || ''} style={styles.overviewCategoryIconOverlayImg} referrerPolicy="no-referrer" />
                   </div>
                 )}
                 {item.checked && (
@@ -190,6 +244,11 @@ export default function ShopPageClient() {
               <p style={{ ...styles.overviewItemName, ...(item.checked ? styles.overviewItemNameDone : {}) }}>
                 {item.productName}
               </p>
+              {!item.checked && item.storeName && (
+                <p style={styles.overviewItemStore}>
+                  {item.storeType === 'chain' ? '🏪' : '📍'} {item.storeName}
+                </p>
+              )}
               {!item.checked && (
                 <p style={styles.overviewItemQty}>× {item.quantity}</p>
               )}
@@ -230,6 +289,11 @@ export default function ShopPageClient() {
             </p>
           </div>
         )}
+        {currentItem.categoryIconUrl && (
+          <div style={styles.categoryIconOverlay}>
+            <img src={currentItem.categoryIconUrl} alt={currentItem.categoryName || ''} style={styles.categoryIconOverlayImg} referrerPolicy="no-referrer" />
+          </div>
+        )}
         {currentItem.checked && (
           <div style={styles.checkedOverlay}>
             <CheckIcon size={120} />
@@ -240,6 +304,21 @@ export default function ShopPageClient() {
       {/* Product info */}
       <div style={styles.productInfo}>
         <p style={styles.productName}>{currentItem.productName}</p>
+          {currentItem.storeName && (
+          <div style={styles.storeRow}>
+            {currentItem.storeLogoUrl ? (
+              <img src={currentItem.storeLogoUrl} alt={currentItem.storeName}
+                style={styles.storeLogoSmall}
+                onError={e => e.target.style.display = 'none'}
+                referrerPolicy="no-referrer" />
+            ) : (
+              <span style={{ fontSize: '0.9rem' }}>
+                {currentItem.storeType === 'chain' ? '🏪' : '📍'}
+              </span>
+            )}
+            <span style={styles.storeName}>{currentItem.storeName}</span>
+          </div>
+        )}
         <div style={styles.quantityBadge}>
           <span style={styles.quantityNumber}>{currentItem.quantity}</span>
           <span style={styles.quantityUnit}>{currentItem.quantity === 1 ? 'stuk' : 'stuks'}</span>
@@ -253,7 +332,7 @@ export default function ShopPageClient() {
           {items.map((item, idx) => (
             <div key={item.id} onClick={() => setCurrentIndex(idx)} style={{
               ...styles.dot,
-              backgroundColor: item.checked ? '#4CAF50' : idx === currentIndex ? '#1a1a1a' : '#ddd',
+              backgroundColor: item.checked ? '#5B9BD5' : idx === currentIndex ? '#1A2B3C' : '#ddd',
               transform: idx === currentIndex ? 'scale(1.4)' : 'scale(1)',
               cursor: 'pointer',
             }} />
@@ -269,10 +348,10 @@ export default function ShopPageClient() {
           <span>Leg in mandje</span>
         </button>
       ) : (
-        <div style={styles.alreadyTakenBadge}>
-          <CheckIcon size={28} color="#4CAF50" />
-          <span>In het mandje</span>
-        </div>
+        <button style={{ ...styles.uncheckButton, opacity: marking ? 0.7 : 1 }} onClick={() => handleUncheck()} disabled={marking}>
+          <UndoIcon />
+          <span>Terugleggen</span>
+        </button>
       )}
 
       {/* Thumbnail strip — alleen ongenomen items */}
@@ -328,6 +407,15 @@ function CartIcon({ size = 24, color = '#4CAF50' }) {
   );
 }
 
+function UndoIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7v6h6"/>
+      <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
+    </svg>
+  );
+}
+
 function CheckIcon({ size = 60, color = '#4CAF50' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -337,23 +425,54 @@ function CheckIcon({ size = 60, color = '#4CAF50' }) {
 }
 
 // ---- Completion screen ----
+function CelebrationIllustration() {
+  return (
+    <svg width="140" height="140" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Basket body */}
+      <rect x="30" y="62" width="80" height="50" rx="10" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.8)" strokeWidth="3"/>
+      {/* Basket handle */}
+      <path d="M50 62 Q50 36 70 36 Q90 36 90 62" stroke="rgba(255,255,255,0.8)" strokeWidth="3" fill="none" strokeLinecap="round"/>
+      {/* Basket weave lines */}
+      <line x1="30" y1="78" x2="110" y2="78" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
+      <line x1="30" y1="94" x2="110" y2="94" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
+      <line x1="55" y1="62" x2="55" y2="112" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/>
+      <line x1="85" y1="62" x2="85" y2="112" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/>
+      {/* Checkmark circle */}
+      <circle cx="98" cy="56" r="22" fill="#3A7FC1" stroke="rgba(255,255,255,0.9)" strokeWidth="3"/>
+      <polyline points="88,56 96,64 110,48" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      {/* Sparkles */}
+      <line x1="20" y1="28" x2="20" y2="40" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="14" y1="34" x2="26" y2="34" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="118" y1="20" x2="118" y2="30" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="113" y1="25" x2="123" y2="25" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="28" cy="105" r="4" fill="rgba(255,255,255,0.3)"/>
+      <circle cx="115" cy="90" r="3" fill="rgba(255,255,255,0.25)"/>
+      <circle cx="40" cy="22" r="3" fill="rgba(255,255,255,0.35)"/>
+    </svg>
+  );
+}
+
+function StarIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 4l2.94 8.26H28l-7.27 5.48 2.77 8.26L16 21.01l-7.5 5L11.27 17.74 4 12.26h9.06z" fill="rgba(255,255,255,0.9)" stroke="rgba(255,255,255,0.5)" strokeWidth="1"/>
+    </svg>
+  );
+}
+
 function CompletionScreen({ firstName }) {
   const messages = ['Super gedaan!', 'Geweldig!', 'Fantastisch!', 'Goed bezig!', 'Wauw, perfect!'];
-  const emojis = ['🎉', '⭐', '🏆', '🎊', '👏', '🌟'];
   const msg = messages[Math.floor(Math.random() * messages.length)];
-  const e1 = emojis[Math.floor(Math.random() * emojis.length)];
-  const e2 = emojis[Math.floor(Math.random() * emojis.length)];
   return (
     <div style={styles.completionScreen}>
       <div style={styles.completionContent}>
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
-          <span style={{ fontSize: '5rem' }}>{e1}</span>
-          <span style={{ fontSize: '5rem' }}>{e2}</span>
-        </div>
+        <CelebrationIllustration />
         <p style={styles.completionMessage}>{msg}</p>
         {firstName && <p style={styles.completionName}>{firstName}</p>}
         <p style={styles.completionSub}>Alle boodschappen zijn gedaan!</p>
-        <div style={{ fontSize: '2.5rem', marginTop: '0.5rem' }}>{'⭐'.repeat(5)}</div>
+        <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
+          {[1,2,3,4,5].map(i => <StarIcon key={i} />)}
+        </div>
       </div>
     </div>
   );
@@ -361,20 +480,20 @@ function CompletionScreen({ firstName }) {
 
 // ---- Styles ----
 const styles = {
-  fullScreen: { position: 'fixed', inset: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden', fontFamily: 'system-ui, sans-serif', userSelect: 'none', padding: '0.5rem 0 0' },
-  spinner: { width: '60px', height: '60px', border: '6px solid #eee', borderTop: '6px solid #4CAF50', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: '1rem' },
+  fullScreen: { position: 'fixed', inset: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden', fontFamily: "'Nunito', system-ui, sans-serif", userSelect: 'none', padding: '0.5rem 0 0' },
+  spinner: { width: '60px', height: '60px', border: '6px solid #eee', borderTop: '6px solid #5B9BD5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: '1rem' },
   loadingText: { fontSize: '1.1rem', color: '#aaa', margin: 0 },
   messageContent: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', padding: '2rem', textAlign: 'center' },
   messageIcon: { fontSize: '4rem', margin: 0 },
   messageText: { fontSize: '1.2rem', color: '#555', maxWidth: '300px', lineHeight: '1.6', margin: 0 },
-  actionButton: { padding: '1rem 2rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer' },
+  actionButton: { padding: '1rem 2rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
 
   // Progress
   progressSection: { flexShrink: 0, width: '100%', paddingTop: '0.5rem' },
   progressBarWrapper: { width: '100%', height: '12px', backgroundColor: '#eee', borderRadius: '6px', overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: '#4CAF50', transition: 'width 0.4s ease', borderRadius: '6px' },
+  progressBarFill: { height: '100%', backgroundColor: '#5B9BD5', transition: 'width 0.4s ease', borderRadius: '6px' },
   progressLabelRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0.25rem 0' },
-  progressLabel: { fontSize: '0.9rem', fontWeight: '700', color: '#4CAF50' },
+  progressLabel: { fontSize: '0.9rem', fontWeight: '700', color: '#5B9BD5' },
   viewToggleBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', padding: '0.25rem', display: 'flex', alignItems: 'center' },
 
   // Image
@@ -399,14 +518,14 @@ const styles = {
   dot: { width: '9px', height: '9px', borderRadius: '50%', transition: 'all 0.2s ease', flexShrink: 0 },
 
   // Action button
-  takenButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '18px', fontSize: '1.3rem', fontWeight: '800', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', transition: 'transform 0.15s, opacity 0.15s', boxShadow: '0 4px 16px rgba(76,175,80,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' },
-  alreadyTakenBadge: { margin: '0 1rem 0.5rem', padding: '1rem', backgroundColor: '#E8F5E9', color: '#4CAF50', borderRadius: '18px', fontSize: '1.2rem', fontWeight: '800', textAlign: 'center', flexShrink: 0, width: 'calc(100% - 2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' },
+  takenButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '18px', fontSize: '1.3rem', fontWeight: '800', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', transition: 'transform 0.15s, opacity 0.15s', boxShadow: '0 4px 16px rgba(91,155,213,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', fontFamily: 'inherit' },
+  uncheckButton: { margin: '0 1rem 0.5rem', padding: '1rem 1.5rem', backgroundColor: '#fff', color: '#888', border: '2px solid #ddd', borderRadius: '18px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer', flexShrink: 0, width: 'calc(100% - 2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' },
 
   // Thumbnail strip
   stripWrapper: { flexShrink: 0, width: '100%', paddingBottom: '0.75rem' },
   strip: { display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0 1rem', scrollbarWidth: 'none' },
   stripItem: { flexShrink: 0, width: '60px', height: '60px', borderRadius: '10px', border: '2px solid #eee', backgroundColor: '#f9f9f9', cursor: 'pointer', overflow: 'hidden', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'border-color 0.2s' },
-  stripItemActive: { border: '3px solid #4CAF50' },
+  stripItemActive: { border: '3px solid #5B9BD5' },
   stripImage: { width: '100%', height: '100%', objectFit: 'cover' },
   stripPlaceholder: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
 
@@ -425,9 +544,22 @@ const styles = {
   overviewItemQty: { fontSize: '0.8rem', color: '#4CAF50', fontWeight: '600', margin: 0 },
 
   // Completion
-  completionScreen: { position: 'fixed', inset: 0, backgroundColor: '#4CAF50', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' },
+  completionScreen: { position: 'fixed', inset: 0, background: 'linear-gradient(160deg, #5B9BD5 0%, #3A7FC1 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Nunito', system-ui, sans-serif" },
   completionContent: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem', textAlign: 'center' },
   completionMessage: { fontSize: '3rem', fontWeight: '900', color: '#fff', margin: 0, lineHeight: 1.1 },
   completionName: { fontSize: '2rem', fontWeight: '800', color: 'rgba(255,255,255,0.9)', margin: 0 },
   completionSub: { fontSize: '1.4rem', fontWeight: '600', color: 'rgba(255,255,255,0.85)', margin: 0 },
+
+  storeRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.4rem' },
+  storeLogoSmall: { width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' },
+  storeName: { fontSize: '0.9rem', color: '#888', fontWeight: '500' },
+  overviewItemStore: { fontSize: '0.72rem', color: '#888', margin: 0, fontWeight: '500' },
+
+  // Categorie overlay — detail view (rechts boven in afbeelding)
+  categoryIconOverlay: { position: 'absolute', top: '10px', right: '10px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '10px', padding: '5px', boxShadow: '0 1px 5px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  categoryIconOverlayImg: { width: '44px', height: '44px', objectFit: 'contain', display: 'block' },
+
+  // Categorie overlay — overzichtsview (rechts boven in kaartafbeelding)
+  overviewCategoryIconOverlay: { position: 'absolute', top: '4px', right: '4px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '6px', padding: '3px', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  overviewCategoryIconOverlayImg: { width: '22px', height: '22px', objectFit: 'contain', display: 'block' },
 };

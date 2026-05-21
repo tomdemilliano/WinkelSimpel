@@ -13,6 +13,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
+import { auth } from '../../lib/firebase';
 import { MemberFactory } from '../../lib/dbSchema';
 
 // Role labels
@@ -61,7 +62,17 @@ function UsersPage({ claims }) {
     const label = `${member.firstName} ${member.lastName}`;
     if (!confirm(`Gebruiker "${label}" verwijderen?`)) return;
     try {
-      await MemberFactory.delete(orgId, member.id);
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/admin/remove-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ orgId, memberId: member.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.message || 'Verwijderen mislukt.');
+        return;
+      }
       setMembers((prev) => prev.filter((m) => m.id !== member.id));
     } catch (err) {
       console.error('Failed to delete member:', err);

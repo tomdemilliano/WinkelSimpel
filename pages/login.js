@@ -67,7 +67,7 @@ export default function LoginPage() {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <div style={styles.logo}>🛒</div>
+          <img src="/icons/icon-192.png" alt="Winkel Simpel" style={styles.logoImg} />
           <h1 style={styles.title}>Winkel Simpel</h1>
           {screen === SCREEN.LOGIN && <p style={styles.subtitle}>Aanmelden voor begeleiders</p>}
           {screen === SCREEN.FORGOT && <p style={styles.subtitle}>Wachtwoord vergeten</p>}
@@ -96,7 +96,15 @@ export default function LoginPage() {
         )}
 
         {screen === SCREEN.LOGIN && (
-          <p style={styles.hint}>Ben je een shopper? Vraag je begeleider om de QR-code.</p>
+          <>
+            <p style={styles.hint}>Ben je een shopper? Vraag je begeleider om de QR-code.</p>
+            <p style={{ ...styles.hint, marginTop: '0.5rem' }}>
+              Nieuw hier?{' '}
+              <a href="/register" style={{ color: '#5B9BD5', fontWeight: '600', textDecoration: 'none' }}>
+                Maak een account aan
+              </a>
+            </p>
+          </>
         )}
       </div>
     </div>
@@ -334,19 +342,19 @@ function getErrorMessage(code) {
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', fontFamily: 'system-ui, sans-serif' },
-  card: { backgroundColor: '#fff', borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '400px', boxShadow: '0 2px 16px rgba(0,0,0,0.08)' },
+  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', fontFamily: "'Nunito', system-ui, sans-serif" },
+  card: { backgroundColor: '#fff', borderRadius: '20px', padding: '2rem', width: '100%', maxWidth: '400px', boxShadow: '0 4px 24px rgba(91,155,213,0.12)', borderTop: '4px solid #5B9BD5' },
   header: { textAlign: 'center', marginBottom: '2rem' },
-  logo: { fontSize: '3rem', marginBottom: '0.5rem' },
-  title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.25rem' },
-  subtitle: { fontSize: '0.9rem', color: '#888', margin: 0 },
+  logoImg: { width: '72px', height: '72px', borderRadius: '16px', marginBottom: '0.75rem' },
+  title: { fontSize: '1.5rem', fontWeight: '800', color: '#1A2B3C', margin: '0 0 0.25rem' },
+  subtitle: { fontSize: '0.9rem', color: '#6B7E91', margin: 0, fontWeight: '600' },
   form: { display: 'flex', flexDirection: 'column', gap: '1rem' },
   field: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },
   label: { fontSize: '0.875rem', fontWeight: '600', color: '#444' },
   input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', outline: 'none' },
   error: { color: '#d93025', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fdecea', borderRadius: '8px' },
-  button: { display: 'block', padding: '0.875rem', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.25rem', textAlign: 'center', textDecoration: 'none' },
-  linkButton: { background: 'none', border: 'none', color: '#4CAF50', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'center' },
+  button: { display: 'block', padding: '0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', marginTop: '0.25rem', textAlign: 'center', textDecoration: 'none', fontFamily: 'inherit' },
+  linkButton: { background: 'none', border: 'none', color: '#5B9BD5', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'center', fontFamily: 'inherit' },
   formHint: { fontSize: '0.875rem', color: '#666', lineHeight: 1.5, margin: 0 },
   changePasswordNotice: { backgroundColor: '#FFF3E0', color: '#E65100', borderRadius: '10px', padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem', textAlign: 'center' },
   hint: { textAlign: 'center', fontSize: '0.8rem', color: '#aaa', marginTop: '1.5rem' },

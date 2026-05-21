@@ -10,28 +10,34 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 
-// Pagina's waar de banner NOOIT getoond wordt
 const EXCLUDED_PATHS = ['/shop', '/scan'];
 
 export default function InstallPrompt() {
   const router = useRouter();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [visible, setVisible] = useState(false);
+  const [showIOSBanner, setShowIOSBanner] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    // Alleen tonen op touch-toestellen (smartphone/tablet), niet op laptop/desktop
     const isTouchDevice =
       navigator.maxTouchPoints > 1 ||
       window.matchMedia('(pointer: coarse)').matches;
     if (!isTouchDevice) return;
 
-    // Eerder weggedrukt? Dan niet meer tonen.
     const wasDismissed = localStorage.getItem('pwa-install-dismissed');
     if (wasDismissed) { setDismissed(true); return; }
 
+    // iOS Safari ondersteunt beforeinstallprompt niet — aparte instructiebanner nodig
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.navigator.standalone === true;
+    if (isIOS && !isStandalone) {
+      setShowIOSBanner(true);
+      return;
+    }
+
     function handleBeforeInstallPrompt(e) {
-      e.preventDefault(); // voorkom automatische browser-banner
+      e.preventDefault();
       setDeferredPrompt(e);
     }
 
@@ -39,7 +45,6 @@ export default function InstallPrompt() {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  // Toon banner zodra prompt beschikbaar is én we niet op een uitgesloten pagina zitten
   useEffect(() => {
     if (!deferredPrompt || dismissed) return;
     const isExcluded = EXCLUDED_PATHS.some(p => router.pathname.startsWith(p));
@@ -59,8 +64,40 @@ export default function InstallPrompt() {
 
   function handleDismiss() {
     setVisible(false);
+    setShowIOSBanner(false);
     setDismissed(true);
     localStorage.setItem('pwa-install-dismissed', '1');
+  }
+
+  const isExcluded = EXCLUDED_PATHS.some(p => router.pathname.startsWith(p));
+
+  if (isExcluded) return null;
+
+  if (showIOSBanner && !dismissed) {
+    return (
+      <div style={styles.banner}>
+        <div style={styles.left}>
+          <div style={styles.iconWrapper}>
+            {/* Safari Delen-icoon */}
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2v13M8 6l4-4 4 4" stroke="#4CAF50" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 14v6a1 1 0 001 1h14a1 1 0 001-1v-6" stroke="#4CAF50" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div>
+            <p style={styles.title}>Installeer Winkel Simpel</p>
+            <p style={styles.subtitle}>
+              Tik op <strong>Delen</strong> ↑ en kies <strong>&ldquo;Zet op beginscherm&rdquo;</strong>
+            </p>
+          </div>
+        </div>
+        <div style={styles.actions}>
+          <button style={styles.dismissButton} onClick={handleDismiss} aria-label="Sluiten">
+            ✕
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!visible) return null;

@@ -1,13 +1,6 @@
-/**
- * pages/api/admin/update-member-role.js — Winkel Simpel
- *
- * Update de Firebase Auth custom claims van een bestaand lid.
- * Nodig wanneer de rol van een begeleider gewijzigd wordt,
- * zodat de nieuwe rol ook in het ID token zit.
- */
-
 import { initializeApp, getApps, getApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const ADMIN_APP_NAME = 'winkel-simpel-admin';
 
@@ -31,32 +24,30 @@ function getAdminApp() {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Methode niet toegestaan.' });
+  if (req.method !== 'GET') return res.status(405).json({ message: 'Methode niet toegestaan.' });
 
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ message: 'Niet geauthenticeerd.' });
 
   try {
-    const adminAuth = getAuth(getAdminApp());
+    const adminApp = getAdminApp();
+    const adminAuth = getAuth(adminApp);
+    const adminDb = getFirestore(adminApp);
+
     const caller = await adminAuth.verifyIdToken(authHeader.split('Bearer ')[1]);
 
-    if (caller.role !== 'app_admin') {
-      return res.status(403).json({ message: 'Geen toegang.' });
+    if (caller.orgType !== 'private') {
+      return res.status(403).json({ message: 'Alleen zelfstandige gebruikers kunnen organisaties opzoeken.' });
     }
 
-    const { uid, role, orgId } = req.body;
-    if (!uid || !role || !orgId) return res.status(400).json({ message: 'Ontbrekende velden.' });
+    const snap = await adminDb.collection('organizations').get();
+    const orgs = snap.docs
+      .filter((d) => d.data().isPrivate !== true)
+      .map((d) => ({ id: d.id, name: d.data().name }));
 
-    const allowedRoles = ['guide', 'org_admin'];
-    if (!allowedRoles.includes(role)) return res.status(400).json({ message: 'Ongeldige rol.' });
-
-    await adminAuth.setCustomUserClaims(uid, { role, orgId, orgType: 'organization' });
-    // Geen revokeRefreshTokens — dat forceert de gebruiker uit te loggen
-    // De nieuwe claims worden actief bij de volgende token refresh (max 1 uur)
-
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ orgs });
   } catch (err) {
-    console.error('update-member-role error:', err);
+    console.error('list-organizations error:', err);
     return res.status(500).json({ message: err.message });
   }
 }

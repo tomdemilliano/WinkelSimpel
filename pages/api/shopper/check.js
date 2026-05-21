@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Methode niet toegestaan.' });
   }
 
-  const { orgId, listId, itemId, token, complete } = req.body;
+  const { orgId, listId, itemId, token, complete, checked = true } = req.body;
   if (!orgId || !listId || !itemId || !token) {
     return res.status(400).json({ message: 'Verplichte velden ontbreken.' });
   }
@@ -74,15 +74,15 @@ export default async function handler(req, res) {
       return res.status(403).json({ message: 'Ongeldige QR-code.' });
     }
 
-    // Mark item as checked
+    // Mark item as checked or unchecked
     await db
       .collection('organizations').doc(orgId)
       .collection('shoppingLists').doc(listId)
       .collection('items').doc(itemId)
-      .update({ checked: true });
+      .update({ checked });
 
-    // If complete flag is set, mark list as completed
-    if (complete) {
+    // Only mark list as completed when checking the last item
+    if (checked && complete) {
       await db
         .collection('organizations').doc(orgId)
         .collection('shoppingLists').doc(listId)
