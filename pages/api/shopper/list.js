@@ -75,7 +75,7 @@ export default async function handler(req, res) {
         // Controleer of dit lijstje ook echt voor deze shopper is
         if (list.assignedTo.id === memberId) {
           tokenValid = true;
-          memberInfo = { id: memberId, firstName: member.firstName, lastName: member.lastName };
+          memberInfo = { id: memberId, firstName: member.firstName, lastName: member.lastName, voiceName: member.voiceName || null };
         }
       }
     } else if (list.assignedTo?.type === 'group') {
@@ -100,10 +100,18 @@ export default async function handler(req, res) {
 
     const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+    // Haal steminstelling op uit organisatiedocument
+    const orgDoc = await db.collection('organizations').doc(orgId).get();
+    const orgData = orgDoc.data() || {};
+
     return res.status(200).json({
       member: memberInfo,
       list: { id: listDoc.id, title: list.title, status: list.status },
       items,
+      voiceSettings: {
+        defaultVoiceName: orgData.defaultVoiceName || null,
+        shopperVoiceName: memberInfo.voiceName || null,
+      },
     });
   } catch (err) {
     console.error('shopper/list error:', err.message);

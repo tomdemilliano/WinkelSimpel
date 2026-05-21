@@ -3,7 +3,11 @@
     "allow": [
       "Bash(grep -E \"\\\\.js$\")",
       "Bash(grep -r \"#[0-9A-Fa-f]\\\\{3,6\\\\}\" --include=\"*.js\" --include=\"*.css\")",
-      "Bash(grep -roh \"#[0-9A-Fa-f]\\\\{3,6\\\\}\" --include=\"*.js\" --include=\"*.css\")"
+      "Bash(grep -roh \"#[0-9A-Fa-f]\\\\{3,6\\\\}\" --include=\"*.js\" --include=\"*.css\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Git repo\\\\WinkelSimpel\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(git show *)",
+      "Bash(git ls-tree *)"
     ]
   }
 }
