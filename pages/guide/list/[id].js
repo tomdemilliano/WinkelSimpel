@@ -58,6 +58,9 @@ function ListDetail({ claims }) {
   const [members, setMembers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [categories, setCategories] = useState({});
+  const [showReassignForm, setShowReassignForm] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [groups, setGroups] = useState([]);
 
   useEffect(() => {
     if (!listId) return;
@@ -358,6 +361,7 @@ function ListDetail({ claims }) {
           </button>
         </div>
       )}
+
 
       {isActive && (
         <div style={styles.actions}>
