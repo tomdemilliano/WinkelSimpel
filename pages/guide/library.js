@@ -39,6 +39,21 @@ function ProductImage({ url, alt, style, placeholderSize = '1.75rem' }) {
 
 
 // ---------------------------------------------------------------------------
+// Fuzzy match — zelfde logica als in de ProductPicker
+// ---------------------------------------------------------------------------
+function fuzzyMatch(needle, haystack) {
+  if (!needle) return true;
+  const n = needle.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const h = haystack.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (h.includes(n)) return true;
+  let ni = 0;
+  for (let hi = 0; hi < h.length && ni < n.length; hi++) {
+    if (h[hi] === n[ni]) ni++;
+  }
+  return ni === n.length;
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 function ProductLibrary({ claims }) {
@@ -50,6 +65,8 @@ function ProductLibrary({ claims }) {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null); // null = new product
   const [searchQuery, setSearchQuery] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState(null);
   const [centralProducts, setCentralProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [centralCategories, setCentralCategories] = useState([]);
@@ -153,9 +170,38 @@ function ProductLibrary({ claims }) {
     ...unlinkedCentralProducts.map(c => ({ ...c, _source: 'central' })),
   ];
 
-  const filteredProducts = allProducts.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Bouw een unieke categorielijst voor het zijpaneel
+  const usedCategoryKeys = new Set();
+  const sidebarCategories = [];
+  allProducts.forEach(p => {
+    const key = p._source === 'central' && p.centralCategoryId
+      ? `central:${p.centralCategoryId}`
+      : p._source === 'org' && p.categoryId
+        ? `org:${p.categoryId}`
+        : null;
+    if (!key || usedCategoryKeys.has(key)) return;
+    const cat = p._source === 'central'
+      ? centralCategories.find(c => c.id === p.centralCategoryId)
+      : categories.find(c => c.id === p.categoryId);
+    if (cat) {
+      usedCategoryKeys.add(key);
+      sidebarCategories.push({ ...cat, _key: key });
+    }
+  });
+  sidebarCategories.sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+
+  const filteredProducts = allProducts.filter((p) => {
+    const cat = p._source === 'central'
+      ? centralCategories.find(c => c.id === p.centralCategoryId)
+      : categories.find(c => c.id === p.categoryId);
+    const matchesSearch = !searchQuery || fuzzyMatch(searchQuery, p.name) || (cat && fuzzyMatch(searchQuery, cat.name));
+    if (!matchesSearch) return false;
+    if (!selectedCategoryKey) return true;
+    const [src, catId] = selectedCategoryKey.split(':');
+    if (src === 'org') return p._source === 'org' && p.categoryId === catId;
+    if (src === 'central') return p._source === 'central' && p.centralCategoryId === catId;
+    return true;
+  });
 
   return (
     <div style={styles.page}>
@@ -170,42 +216,87 @@ function ProductLibrary({ claims }) {
         </button>
       </div>
 
-      {/* Search */}
-      <input
-        type="search"
-        placeholder="Zoeken..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        style={styles.searchInput}
-      />
+      {/* Search + sidebar toggle */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', alignItems: 'center' }}>
+        <input
+          type="search"
+          placeholder="Zoeken op naam of categorie..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ ...styles.searchInput, marginBottom: 0, flex: 1, width: 'auto' }}
+        />
+        {sidebarCategories.length > 0 && (
+          <button
+            onClick={() => setSidebarOpen(prev => !prev)}
+            style={{ ...styles.sidebarToggleBtn, ...(sidebarOpen ? styles.sidebarToggleBtnActive : {}) }}
+            title={sidebarOpen ? 'Categorieën verbergen' : 'Filteren op categorie'}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
+      </div>
 
       {/* Product list */}
       {loading ? (
         <div style={styles.centered}>
           <p style={styles.hint}>Laden...</p>
         </div>
-      ) : filteredProducts.length === 0 ? (
-        <div style={styles.centered}>
-          <p style={styles.hint}>
-            {searchQuery ? 'Geen producten gevonden.' : 'Nog geen producten. Voeg er een toe!'}
-          </p>
-        </div>
       ) : (
-        <div style={styles.productGrid}>
-          {filteredProducts.map((product) => (
-            <ProductCard
-              key={`${product._source}-${product.id}`}
-              product={product}
-              category={
-                product._source === 'central'
-                  ? (centralCategories.find(c => c.id === product.centralCategoryId) || null)
-                  : (categories.find(c => c.id === product.categoryId) || null)
-              }
-              onEdit={() => handleEdit(product)}
-              onDelete={() => handleDelete(product)}
-              onCopy={() => handleCopyFromCentral(product)}
-            />
-          ))}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+          {/* Zijpaneel categorieën */}
+          {sidebarOpen && sidebarCategories.length > 0 && (
+            <div style={styles.sidebar}>
+              <button
+                style={{ ...styles.sidebarItem, ...(selectedCategoryKey === null ? styles.sidebarItemActive : {}) }}
+                onClick={() => setSelectedCategoryKey(null)}
+              >
+                <span style={styles.sidebarItemLabel}>Alle</span>
+              </button>
+              {sidebarCategories.map(cat => (
+                <button
+                  key={cat._key}
+                  style={{ ...styles.sidebarItem, ...(selectedCategoryKey === cat._key ? styles.sidebarItemActive : {}) }}
+                  onClick={() => setSelectedCategoryKey(selectedCategoryKey === cat._key ? null : cat._key)}
+                >
+                  {cat.iconUrl
+                    ? <img src={cat.iconUrl} alt="" style={styles.sidebarItemIcon} referrerPolicy="no-referrer" />
+                    : <span style={{ fontSize: '1rem', flexShrink: 0 }}>🏷️</span>
+                  }
+                  <span style={styles.sidebarItemLabel}>{cat.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Producten */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {filteredProducts.length === 0 ? (
+              <div style={styles.centered}>
+                <p style={styles.hint}>
+                  {searchQuery || selectedCategoryKey ? 'Geen producten gevonden.' : 'Nog geen producten. Voeg er een toe!'}
+                </p>
+              </div>
+            ) : (
+              <div style={styles.productGrid}>
+                {filteredProducts.map((product) => (
+                  <ProductCard
+                    key={`${product._source}-${product.id}`}
+                    product={product}
+                    category={
+                      product._source === 'central'
+                        ? (centralCategories.find(c => c.id === product.centralCategoryId) || null)
+                        : (categories.find(c => c.id === product.categoryId) || null)
+                    }
+                    onEdit={() => handleEdit(product)}
+                    onDelete={() => handleDelete(product)}
+                    onCopy={() => handleCopyFromCentral(product)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -890,6 +981,65 @@ const styles = {
     fontWeight: '700',
     cursor: 'pointer',
     marginTop: '0.5rem',
+  },
+  sidebarToggleBtn: {
+    padding: '0.75rem',
+    backgroundColor: '#f5f5f5',
+    border: '1.5px solid #ddd',
+    borderRadius: '10px',
+    cursor: 'pointer',
+    color: '#666',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    width: '46px',
+    height: '46px',
+  },
+  sidebarToggleBtnActive: {
+    backgroundColor: '#EBF4FF',
+    borderColor: '#5B9BD5',
+    color: '#1565C0',
+  },
+  sidebar: {
+    width: '120px',
+    flexShrink: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
+  },
+  sidebarItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    padding: '0.5rem 0.6rem',
+    borderRadius: '8px',
+    border: '1.5px solid #eee',
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    textAlign: 'left',
+    width: '100%',
+    fontFamily: 'inherit',
+  },
+  sidebarItemActive: {
+    backgroundColor: '#EBF4FF',
+    borderColor: '#5B9BD5',
+  },
+  sidebarItemIcon: {
+    width: '18px',
+    height: '18px',
+    objectFit: 'contain',
+    flexShrink: 0,
+  },
+  sidebarItemLabel: {
+    fontSize: '0.72rem',
+    fontWeight: '600',
+    color: '#444',
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
   },
   categoryBadge: {
     display: 'inline-flex',
