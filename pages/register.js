@@ -104,7 +104,7 @@ function RegisterForm({ router }) {
   return (
     <form onSubmit={handleSubmit} style={styles.form}>
       <div style={styles.row}>
-        <div style={{ ...styles.field, flex: 1 }}>
+        <div style={{ ...styles.field, flex: '1 1 120px' }}>
           <label style={styles.label}>Voornaam</label>
           <input
             type="text"
@@ -117,7 +117,7 @@ function RegisterForm({ router }) {
             autoFocus
           />
         </div>
-        <div style={{ ...styles.field, flex: 1 }}>
+        <div style={{ ...styles.field, flex: '1 1 120px' }}>
           <label style={styles.label}>Achternaam</label>
           <input
             type="text"
@@ -186,10 +186,10 @@ const styles = {
   title: { fontSize: '1.5rem', fontWeight: '800', color: '#1A2B3C', margin: '0 0 0.25rem' },
   subtitle: { fontSize: '0.9rem', color: '#6B7E91', margin: 0, fontWeight: '600' },
   form: { display: 'flex', flexDirection: 'column', gap: '1rem' },
-  row: { display: 'flex', gap: '0.75rem' },
-  field: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },
+  row: { display: 'flex', gap: '0.75rem', flexWrap: 'wrap' },
+  field: { display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: 0 },
   label: { fontSize: '0.875rem', fontWeight: '700', color: '#1A2B3C' },
-  input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #D8E5EF', fontSize: '1rem', outline: 'none', fontFamily: 'inherit' },
+  input: { padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #D8E5EF', fontSize: '1rem', outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' },
   error: { color: '#d93025', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fdecea', borderRadius: '8px' },
   button: { display: 'block', padding: '0.875rem', backgroundColor: '#5B9BD5', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', marginTop: '0.25rem', textAlign: 'center', fontFamily: 'inherit' },
   hint: { textAlign: 'center', fontSize: '0.8rem', color: '#aaa', marginTop: '1.5rem' },
