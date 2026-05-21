@@ -113,23 +113,26 @@ function GuideDashboard({ claims }) {
     <div style={styles.page}>
       {/* Blauwe gradient header */}
       <div style={styles.headerBand}>
-        <div>
-          <h1 style={styles.appTitle}>Winkel Simpel</h1>
-          <p style={styles.appSubtitle}>
-            {orgName || 'Begeleidersdashboard'}
-          </p>
+        <div style={styles.headerTop}>
+          <div>
+            <h1 style={styles.appTitle}>Winkel Simpel</h1>
+            <p style={styles.appSubtitle}>Begeleidersdashboard</p>
+          </div>
+          <div style={styles.headerActions}>
+            <button style={styles.iconButton} onClick={() => router.push('/guide/account')} aria-label="Account instellingen">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4"/>
+                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+              </svg>
+            </button>
+            <button style={styles.signOutButton} onClick={handleSignOut}>
+              Afmelden
+            </button>
+          </div>
         </div>
-        <div style={styles.headerActions}>
-          <button style={styles.iconButton} onClick={() => router.push('/guide/account')} aria-label="Account instellingen">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="8" r="4"/>
-              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-            </svg>
-          </button>
-          <button style={styles.signOutButton} onClick={handleSignOut}>
-            Afmelden
-          </button>
-        </div>
+        {orgName && (
+          <p style={styles.orgNameLabel}>{orgName}</p>
+        )}
       </div>
 
       <div style={styles.content}>
@@ -211,10 +214,22 @@ const styles = {
   },
   headerBand: {
     background: 'linear-gradient(135deg, #5B9BD5 0%, #3A7FC1 100%)',
-    padding: '1.75rem 1.5rem 2rem',
+    padding: '1.75rem 1.5rem 1.5rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  headerTop: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  orgNameLabel: {
+    fontSize: '0.8rem',
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.75)',
+    margin: 0,
+    letterSpacing: '0.03em',
   },
   appTitle: {
     fontSize: '1.75rem',
