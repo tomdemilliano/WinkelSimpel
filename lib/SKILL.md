@@ -54,6 +54,7 @@ Winkel Simpel stelt mensen met een beperking in staat om zelfstandig boodschappe
 5. **Foto's in Firebase Storage** — nooit base64 in Firestore opslaan
 6. **PWA-ready** — app moet installeerbaar zijn op smartphone
 7. **Shopper-first** — bij twijfel over UX-keuze: kies de meest toegankelijke optie
+8. **Firestore rules in de repo** — `firestore.rules` is de enige bron van waarheid voor beveiligingsregels. Bij elke nieuwe collectie of schrijfoperatie: regel toevoegen in `firestore.rules` én deployen via `firebase deploy --only firestore:rules`
 
 ## Bestandsstructuur
 ```
