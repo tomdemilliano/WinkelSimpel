@@ -4,7 +4,7 @@
  * Shopping list detail page for guides.
  * Allows adding products from the library, setting quantities,
  * reordering items, and activating or deactivating the list.
- */
+ */ 
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
