@@ -25,6 +25,7 @@ export default function ShopPageClient() {
   const [shopperName, setShopperName] = useState('');
   const [view, setView] = useState('detail'); // 'detail' | 'overview'
   const [voiceName, setVoiceName] = useState(null);
+  const [checkoutStep, setCheckoutStep] = useState(false);
 
   const sessionRef = useRef({ orgId: null, listId: null, token: null });
   const touchStartX = useRef(null);
@@ -206,7 +207,8 @@ export default function ShopPageClient() {
     );
   }
 
-  if (completed) return <CompletionScreen firstName={shopperName} />;
+  if (completed && checkoutStep) return <CheckoutStepsScreen />;
+  if (completed) return <CompletionScreen firstName={shopperName} onContinue={() => setCheckoutStep(true)} />;
   if (items.length === 0) return <div style={styles.fullScreen}><p style={styles.loadingText}>Geen producten.</p></div>;
 
   const uncheckedItems = items.filter(i => !i.checked);
@@ -495,23 +497,280 @@ function StarIcon() {
   );
 }
 
-function CompletionScreen({ firstName }) {
+// ---- Animated Completion Screen ----
+
+const ANIMATIONS = [
+  ThumbsUpAnimation,
+  CartFillAnimation,
+  StarBurstAnimation,
+];
+
+function CompletionScreen({ firstName, onContinue }) {
   const messages = ['Super gedaan!', 'Geweldig!', 'Fantastisch!', 'Goed bezig!', 'Wauw, perfect!'];
   const msg = messages[Math.floor(Math.random() * messages.length)];
+  const AnimComp = ANIMATIONS[Math.floor(Math.random() * ANIMATIONS.length)];
+
   return (
     <div style={styles.completionScreen}>
       <div style={styles.completionContent}>
-        <CelebrationIllustration />
+        <AnimComp />
         <p style={styles.completionMessage}>{msg}</p>
         {firstName && <p style={styles.completionName}>{firstName}</p>}
         <p style={styles.completionSub}>Alle boodschappen zijn gedaan!</p>
-        <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
+        <div style={{ display: 'flex', gap: '0.25rem', margin: '0.25rem 0 1.5rem' }}>
           {[1,2,3,4,5].map(i => <StarIcon key={i} />)}
         </div>
+        <button style={styles.completionNextButton} onClick={onContinue}>
+          Wat nu? →
+        </button>
+      </div>
+      <style>{completionKeyframes}</style>
+    </div>
+  );
+}
+
+const completionKeyframes = `
+  @keyframes thumbPop {
+    0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+    60% { transform: scale(1.2) rotate(5deg); opacity: 1; }
+    80% { transform: scale(0.95) rotate(-2deg); }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+  @keyframes cartBounce {
+    0% { transform: translateY(60px); opacity: 0; }
+    50% { transform: translateY(-12px); opacity: 1; }
+    70% { transform: translateY(5px); }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes itemDrop1 {
+    0% { transform: translateY(-80px) rotate(-30deg); opacity: 0; }
+    40% { opacity: 1; }
+    60% { transform: translateY(0px) rotate(5deg); }
+    100% { transform: translateY(0px) rotate(0deg); opacity: 1; }
+  }
+  @keyframes itemDrop2 {
+    0% { transform: translateY(-80px) rotate(20deg); opacity: 0; }
+    20% { opacity: 0; }
+    70% { opacity: 1; }
+    80% { transform: translateY(0px) rotate(-5deg); }
+    100% { transform: translateY(0px) rotate(0deg); opacity: 1; }
+  }
+  @keyframes itemDrop3 {
+    0% { transform: translateY(-80px) rotate(-10deg); opacity: 0; }
+    40% { opacity: 0; }
+    90% { opacity: 1; }
+    95% { transform: translateY(0px) rotate(8deg); }
+    100% { transform: translateY(0px) rotate(0deg); opacity: 1; }
+  }
+  @keyframes starBurst {
+    0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+    50% { transform: scale(1.3) rotate(10deg); opacity: 1; }
+    75% { transform: scale(0.9) rotate(-5deg); }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+  @keyframes sparkle {
+    0%, 100% { opacity: 0; transform: scale(0); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+`;
+
+// Animation 1: Thumbs up
+function ThumbsUpAnimation() {
+  return (
+    <div style={{ animation: 'thumbPop 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards', marginBottom: '0.5rem' }}>
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        <circle cx="60" cy="60" r="56" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" strokeWidth="3"/>
+        {/* Thumb */}
+        <path d="M38 68h8V52c0-2 1.5-4 4-4h4c1 0 2 0.5 2.5 1.5L62 58h12c3 0 5 2 5 5 0 1-0.3 2-0.8 2.8l-6 14c-0.7 1.5-2.2 2.5-3.8 2.5H46c-2.2 0-4-1.8-4-4v-2H38c-2.2 0-4-1.8-4-4v-6c0-2.2 1.8-4 4-4z" fill="white"/>
+        {/* Sparkles */}
+        <circle cx="88" cy="32" r="4" fill="rgba(255,255,255,0.8)" style={{ animation: 'sparkle 1.5s 0.3s ease-in-out infinite' }}/>
+        <circle cx="28" cy="40" r="3" fill="rgba(255,255,255,0.6)" style={{ animation: 'sparkle 1.5s 0.7s ease-in-out infinite' }}/>
+        <circle cx="92" cy="75" r="3" fill="rgba(255,255,255,0.7)" style={{ animation: 'sparkle 1.5s 1s ease-in-out infinite' }}/>
+      </svg>
+    </div>
+  );
+}
+
+// Animation 2: Items falling into cart
+function CartFillAnimation() {
+  return (
+    <div style={{ position: 'relative', width: 140, height: 140, marginBottom: '0.5rem' }}>
+      {/* Apple */}
+      <div style={{ position: 'absolute', top: 0, left: 20, animation: 'itemDrop1 1s 0.1s cubic-bezier(0.34,1.2,0.64,1) both' }}>
+        <svg width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="18" r="11" fill="#FF6B6B"/><path d="M16 8 Q18 4 22 5" stroke="#4CAF50" strokeWidth="2" fill="none" strokeLinecap="round"/></svg>
+      </div>
+      {/* Milk */}
+      <div style={{ position: 'absolute', top: 0, left: 90, animation: 'itemDrop2 1s 0.3s cubic-bezier(0.34,1.2,0.64,1) both' }}>
+        <svg width="28" height="36" viewBox="0 0 28 36"><rect x="6" y="8" width="16" height="24" rx="3" fill="white" stroke="rgba(255,255,255,0.5)" strokeWidth="1"/><path d="M8 8 L6 2h16l-2 6z" fill="white"/><text x="14" y="24" textAnchor="middle" fontSize="10" fill="#5B9BD5">🥛</text></svg>
+      </div>
+      {/* Bread */}
+      <div style={{ position: 'absolute', top: 0, left: 55, animation: 'itemDrop3 1s 0.5s cubic-bezier(0.34,1.2,0.64,1) both' }}>
+        <svg width="34" height="28" viewBox="0 0 34 28"><ellipse cx="17" cy="16" rx="14" ry="10" fill="#F4A261"/><ellipse cx="17" cy="10" rx="12" ry="8" fill="#E9C46A"/></svg>
+      </div>
+      {/* Cart */}
+      <div style={{ position: 'absolute', bottom: 0, left: 10, animation: 'cartBounce 0.6s 0.05s cubic-bezier(0.34,1.2,0.64,1) both' }}>
+        <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+          <rect x="15" y="22" width="90" height="42" rx="6" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5"/>
+          <path d="M15 22L22 8h76l7 14" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5" strokeLinejoin="round"/>
+          <line x1="15" y1="22" x2="105" y2="22" stroke="rgba(255,255,255,0.8)" strokeWidth="2"/>
+          <circle cx="35" cy="68" r="6" fill="rgba(255,255,255,0.9)"/>
+          <circle cx="85" cy="68" r="6" fill="rgba(255,255,255,0.9)"/>
+        </svg>
       </div>
     </div>
   );
 }
+
+// Animation 3: Star burst / confetti
+function StarBurstAnimation() {
+  const stars = [
+    { x: 60, y: 60, r: 28, delay: '0s', color: 'rgba(255,255,255,0.95)' },
+    { x: 22, y: 30, r: 12, delay: '0.15s', color: 'rgba(255,220,100,0.9)' },
+    { x: 98, y: 28, r: 10, delay: '0.25s', color: 'rgba(255,180,100,0.9)' },
+    { x: 15, y: 75, r: 8, delay: '0.35s', color: 'rgba(255,255,255,0.7)' },
+    { x: 105, y: 80, r: 9, delay: '0.45s', color: 'rgba(255,220,100,0.8)' },
+    { x: 60, y: 10, r: 7, delay: '0.1s', color: 'rgba(255,255,255,0.8)' },
+  ];
+  return (
+    <div style={{ marginBottom: '0.5rem', animation: 'pulse 2s 1s ease-in-out infinite' }}>
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        {stars.map((s, i) => (
+          <polygon key={i}
+            points={starPoints(s.x, s.y, s.r, s.r * 0.4, 5)}
+            fill={s.color}
+            style={{ animation: `starBurst 0.6s ${s.delay} cubic-bezier(0.34,1.56,0.64,1) both` }}
+          />
+        ))}
+        {/* Checkmark circle */}
+        <circle cx="60" cy="60" r="24" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5" style={{ animation: 'starBurst 0.5s 0s cubic-bezier(0.34,1.56,0.64,1) both' }}/>
+        <polyline points="50,60 58,68 72,52" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none" style={{ animation: 'starBurst 0.4s 0.3s cubic-bezier(0.34,1.56,0.64,1) both' }}/>
+      </svg>
+    </div>
+  );
+}
+
+function starPoints(cx, cy, outer, inner, points) {
+  let path = '';
+  for (let i = 0; i < points * 2; i++) {
+    const angle = (i * Math.PI) / points - Math.PI / 2;
+    const r = i % 2 === 0 ? outer : inner;
+    const x = cx + r * Math.cos(angle);
+    const y = cy + r * Math.sin(angle);
+    path += (i === 0 ? '' : ' ') + x.toFixed(1) + ',' + y.toFixed(1);
+  }
+  return path;
+}
+
+// ---- Checkout Steps Screen ----
+function CheckoutStepsScreen() {
+  const steps = [
+    {
+      icon: '🏪',
+      title: 'Ga naar de kassa',
+      desc: 'Loop naar de kassa met je volle winkelmandje.',
+      color: '#5B9BD5',
+      bg: 'rgba(91,155,213,0.18)',
+    },
+    {
+      icon: '📦',
+      title: 'Leg producten op de band',
+      desc: 'Haal alle producten uit je mandje en leg ze op de lopende band.',
+      color: '#4CAF50',
+      bg: 'rgba(76,175,80,0.18)',
+    },
+    {
+      icon: '💳',
+      title: 'Betaal de producten',
+      desc: 'Betaal met je kaart of cash. Vergeet niet je bonnetje!',
+      color: '#FF9800',
+      bg: 'rgba(255,152,0,0.18)',
+    },
+  ];
+
+  return (
+    <div style={checkoutStyles.screen}>
+      <div style={checkoutStyles.header}>
+        <p style={checkoutStyles.title}>Bijna klaar!</p>
+        <p style={checkoutStyles.subtitle}>Volg deze stappen:</p>
+      </div>
+      <div style={checkoutStyles.steps}>
+        {steps.map((step, i) => (
+          <div key={i} style={{ ...checkoutStyles.stepCard, borderLeftColor: step.color }}>
+            <div style={{ ...checkoutStyles.stepNum, backgroundColor: step.bg, color: step.color }}>
+              {i + 1}
+            </div>
+            <div style={checkoutStyles.stepIcon}>{step.icon}</div>
+            <div style={checkoutStyles.stepBody}>
+              <p style={{ ...checkoutStyles.stepTitle, color: step.color }}>{step.title}</p>
+              <p style={checkoutStyles.stepDesc}>{step.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={checkoutStyles.footer}>
+        <p style={checkoutStyles.footerText}>Goed gedaan vandaag! 🎉</p>
+      </div>
+    </div>
+  );
+}
+
+const checkoutStyles = {
+  screen: {
+    position: 'fixed', inset: 0,
+    background: 'linear-gradient(160deg, #1A2B3C 0%, #2C4A6E 100%)',
+    display: 'flex', flexDirection: 'column',
+    fontFamily: "'Nunito', system-ui, sans-serif",
+    padding: '2rem 1.5rem',
+    overflowY: 'auto',
+  },
+  header: {
+    textAlign: 'center', marginBottom: '2rem', flexShrink: 0,
+  },
+  title: {
+    fontSize: '2.25rem', fontWeight: '900', color: '#fff', margin: '0 0 0.25rem',
+  },
+  subtitle: {
+    fontSize: '1.1rem', color: 'rgba(255,255,255,0.7)', margin: 0, fontWeight: '600',
+  },
+  steps: {
+    display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1,
+  },
+  stepCard: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: '16px',
+    borderLeft: '5px solid',
+    padding: '1.25rem',
+    display: 'flex', alignItems: 'center', gap: '1rem',
+    backdropFilter: 'blur(4px)',
+  },
+  stepNum: {
+    width: '36px', height: '36px', borderRadius: '50%',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontWeight: '900', fontSize: '1.1rem', flexShrink: 0,
+  },
+  stepIcon: {
+    fontSize: '2.5rem', flexShrink: 0,
+  },
+  stepBody: {
+    flex: 1,
+  },
+  stepTitle: {
+    fontSize: '1.15rem', fontWeight: '800', margin: '0 0 0.3rem',
+  },
+  stepDesc: {
+    fontSize: '0.95rem', color: 'rgba(255,255,255,0.75)', margin: 0, lineHeight: 1.4,
+  },
+  footer: {
+    textAlign: 'center', paddingTop: '1.5rem', flexShrink: 0,
+  },
+  footerText: {
+    fontSize: '1.5rem', fontWeight: '800', color: 'rgba(255,255,255,0.85)', margin: 0,
+  },
+};
 
 // ---- Styles ----
 const styles = {
@@ -584,6 +843,7 @@ const styles = {
   completionMessage: { fontSize: '3rem', fontWeight: '900', color: '#fff', margin: 0, lineHeight: 1.1 },
   completionName: { fontSize: '2rem', fontWeight: '800', color: 'rgba(255,255,255,0.9)', margin: 0 },
   completionSub: { fontSize: '1.4rem', fontWeight: '600', color: 'rgba(255,255,255,0.85)', margin: 0 },
+  completionNextButton: { padding: '1rem 2.5rem',  backgroundColor: 'rgba(255,255,255,0.2)',  color: '#fff',  border: '2px solid rgba(255,255,255,0.6)',  borderRadius: '16px',  fontSize: '1.25rem',  fontWeight: '800',  cursor: 'pointer',  fontFamily: "'Nunito', system-ui, sans-serif",  backdropFilter: 'blur(4px)'},
 
   storeRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.4rem' },
   storeLogoSmall: { width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' },
