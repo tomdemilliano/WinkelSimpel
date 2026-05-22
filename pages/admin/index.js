@@ -63,14 +63,15 @@ function AdminDashboard({ claims }) {
 }
 
 // ---------------------------------------------------------------------------
-// OrgsTab — overzicht met snelstats + detail-sheet
+// OrgsTab — gesplitst in echte organisaties vs stand-alone gebruikers
 // ---------------------------------------------------------------------------
 function OrgsTab({ claims, router }) {
   const [organizations, setOrganizations] = useState([]);
-  const [orgStats, setOrgStats]           = useState({}); // { [orgId]: { guides, shoppers } }
+  const [orgStats, setOrgStats]           = useState({});
   const [loading, setLoading]             = useState(true);
   const [showForm, setShowForm]           = useState(false);
-  const [detailOrg, setDetailOrg]         = useState(null); // org object or null
+  const [detailOrg, setDetailOrg]         = useState(null);
+  const [orgSubTab, setOrgSubTab]         = useState('real'); // 'real' | 'standalone'
 
   useEffect(() => { loadOrganizations(); }, []);
 
@@ -83,7 +84,6 @@ function OrgsTab({ claims, router }) {
         .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setOrganizations(orgs);
 
-      // Laad member-tellingen parallel voor alle orgs
       const statsEntries = await Promise.all(
         orgs.map(async org => {
           const membersSnap = await MemberFactory.getAll(org.id);
@@ -101,37 +101,79 @@ function OrgsTab({ claims, router }) {
   }
 
   async function handleDeleteOrg(org) {
-    if (!confirm(`Organisatie "${org.name}" verwijderen?`)) return;
+    if (!confirm(`"${org.name}" verwijderen?`)) return;
     await OrganizationFactory.delete(org.id);
     setOrganizations(prev => prev.filter(o => o.id !== org.id));
   }
 
-  const totalGuides   = Object.values(orgStats).reduce((s, v) => s + v.guides, 0);
-  const totalShoppers = Object.values(orgStats).reduce((s, v) => s + v.shoppers, 0);
+  // Splitsen op isPrivate veld
+  const realOrgs       = organizations.filter(o => !o.isPrivate);
+  const standaloneOrgs = organizations.filter(o =>  o.isPrivate);
+
+  // Stats voor de balk, gesplitst
+  const realGuides      = realOrgs.reduce((s, o)       => s + (orgStats[o.id]?.guides   || 0), 0);
+  const realShoppers    = realOrgs.reduce((s, o)       => s + (orgStats[o.id]?.shoppers || 0), 0);
+  const standaloneUsers = standaloneOrgs.reduce((s, o) => s + (orgStats[o.id]?.guides   || 0), 0);
+
+  const visibleOrgs = orgSubTab === 'real' ? realOrgs : standaloneOrgs;
 
   return (
     <>
-      {/* Stat-balk */}
-      <div style={styles.statsBar}>
-        <StatPill value={organizations.length} label="organisaties" />
-        <StatPill value={totalGuides}          label="begeleiders"  />
-        <StatPill value={totalShoppers}        label="shoppers"     />
-      </div>
+      {/* Stat-balk — toont context op basis van actief subtabblad */}
+      {orgSubTab === 'real' ? (
+        <div style={styles.statsBar}>
+          <StatPill value={realOrgs.length}  label="organisaties" color="#1565C0" />
+          <StatPill value={realGuides}        label="begeleiders"  />
+          <StatPill value={realShoppers}      label="shoppers"     />
+        </div>
+      ) : (
+        <div style={{ ...styles.statsBar, borderColor: '#E8EAF6' }}>
+          <StatPill value={standaloneOrgs.length} label="stand-alone" color="#5C35A0" />
+          <StatPill value={standaloneUsers}        label="gebruikers"  />
+        </div>
+      )}
 
-      <div style={styles.sectionHeader}>
-        <p style={styles.sectionTitle}>Organisaties</p>
-        <button style={styles.addButton} onClick={() => setShowForm(true)}>+ Nieuw</button>
+      {/* Sub-tabbladen */}
+      <div style={styles.orgSubTabs}>
+        <button
+          style={{ ...styles.orgSubTab, ...(orgSubTab === 'real' ? styles.orgSubTabActiveReal : {}) }}
+          onClick={() => setOrgSubTab('real')}>
+          🏢 Organisaties
+          <span style={{ ...styles.orgSubTabCount, ...(orgSubTab === 'real' ? { backgroundColor: '#1565C0', color: '#fff' } : {}) }}>
+            {realOrgs.length}
+          </span>
+        </button>
+        <button
+          style={{ ...styles.orgSubTab, ...(orgSubTab === 'standalone' ? styles.orgSubTabActiveStandalone : {}) }}
+          onClick={() => setOrgSubTab('standalone')}>
+          👤 Stand-alone
+          <span style={{ ...styles.orgSubTabCount, ...(orgSubTab === 'standalone' ? { backgroundColor: '#5C35A0', color: '#fff' } : {}) }}>
+            {standaloneOrgs.length}
+          </span>
+        </button>
+
+        {/* Knop "Nieuw" alleen voor echte organisaties */}
+        {orgSubTab === 'real' && (
+          <button style={{ ...styles.addButton, marginLeft: 'auto' }} onClick={() => setShowForm(true)}>
+            + Nieuw
+          </button>
+        )}
       </div>
 
       {loading ? (
         <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
-      ) : organizations.length === 0 ? (
-        <div style={styles.centered}><p style={styles.hint}>Nog geen organisaties.</p></div>
+      ) : visibleOrgs.length === 0 ? (
+        <div style={styles.centered}>
+          <p style={styles.hint}>
+            {orgSubTab === 'real' ? 'Nog geen organisaties.' : 'Geen stand-alone gebruikers.'}
+          </p>
+        </div>
       ) : (
         <div style={styles.cardList}>
-          {organizations.map(org => (
+          {visibleOrgs.map(org => (
             <OrgCard key={org.id} org={org}
               stats={orgStats[org.id]}
+              isStandalone={!!org.isPrivate}
               onManage={() => router.push(`/admin/users?org=${org.id}&name=${encodeURIComponent(org.name)}`)}
               onDetail={() => setDetailOrg(org)}
               onDelete={() => handleDeleteOrg(org)} />
@@ -152,39 +194,62 @@ function OrgsTab({ claims, router }) {
   );
 }
 
-function StatPill({ value, label }) {
+function StatPill({ value, label, color }) {
   return (
     <div style={styles.statItem}>
-      <span style={styles.statValue}>{value}</span>
+      <span style={{ ...styles.statValue, ...(color ? { color } : {}) }}>{value}</span>
       <span style={styles.statLabel}>{label}</span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// OrgCard — compact kaart met snelstats
+// OrgCard — compact kaart, met visueel onderscheid stand-alone vs organisatie
 // ---------------------------------------------------------------------------
-function OrgCard({ org, stats, onManage, onDetail, onDelete }) {
+function OrgCard({ org, stats, isStandalone, onManage, onDetail, onDelete }) {
   const createdDate = org.createdAt?.seconds
     ? new Date(org.createdAt.seconds * 1000).toLocaleDateString('nl-BE') : '';
 
+  const avatarStyle = {
+    ...styles.cardAvatar,
+    backgroundColor: isStandalone ? '#EDE7F6' : '#E8F5E9',
+    color:           isStandalone ? '#5C35A0' : '#2E7D32',
+  };
+
   return (
-    <div style={styles.card}>
-      <div style={styles.cardAvatar}>{org.name?.[0]?.toUpperCase() || '?'}</div>
+    <div style={{ ...styles.card, borderLeftWidth: 3, borderLeftColor: isStandalone ? '#B39DDB' : '#A5D6A7', borderLeftStyle: 'solid' }}>
+      <div style={avatarStyle}>
+        {isStandalone ? '👤' : (org.name?.[0]?.toUpperCase() || '?')}
+      </div>
 
       <div style={{ ...styles.cardBody, cursor: 'pointer' }} onClick={onDetail}>
-        <p style={styles.cardName}>{org.name}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <p style={styles.cardName}>{org.name}</p>
+          {isStandalone && (
+            <span style={styles.standaloneBadge}>Stand-alone</span>
+          )}
+        </div>
         {createdDate && <p style={styles.cardSub}>Aangemaakt op {createdDate}</p>}
         {stats && (
           <div style={styles.cardStatRow}>
-            <span style={styles.cardStatChip}>👤 {stats.guides} begeleid.</span>
-            <span style={styles.cardStatChip}>🛒 {stats.shoppers} shoppers</span>
+            {isStandalone ? (
+              <span style={{ ...styles.cardStatChip, backgroundColor: '#EDE7F6', color: '#5C35A0' }}>
+                👤 {stats.guides} gebruiker{stats.guides !== 1 ? 's' : ''}
+              </span>
+            ) : (
+              <>
+                <span style={styles.cardStatChip}>👤 {stats.guides} begeleid.</span>
+                <span style={styles.cardStatChip}>🛒 {stats.shoppers} shoppers</span>
+              </>
+            )}
           </div>
         )}
       </div>
 
       <div style={styles.cardActions}>
-        <button style={styles.manageButton} onClick={onManage}>Leden</button>
+        {!isStandalone && (
+          <button style={styles.manageButton} onClick={onManage}>Leden</button>
+        )}
         <button style={styles.detailButton} onClick={onDetail}>Stats</button>
         <button style={styles.deleteSmallButton} onClick={onDelete}>🗑</button>
       </div>
@@ -259,10 +324,29 @@ function OrgDetailSheet({ org, onClose }) {
         ) : stats && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
+            {/* Type-label bovenaan */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {org.isPrivate ? (
+                <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#5C35A0', backgroundColor: '#EDE7F6', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+                  👤 Stand-alone gebruiker
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#1565C0', backgroundColor: '#E3F2FD', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+                  🏢 Organisatie
+                </span>
+              )}
+            </div>
+
             {/* Gebruikers */}
             <StatSection title="👥 Gebruikers">
-              <StatRow label="Begeleiders / org-admins" value={stats.guides} />
-              <StatRow label="Shoppers" value={stats.shoppers} />
+              {org.isPrivate ? (
+                <StatRow label="Gebruiker" value={stats.guides} />
+              ) : (
+                <>
+                  <StatRow label="Begeleiders / org-admins" value={stats.guides} />
+                  <StatRow label="Shoppers" value={stats.shoppers} />
+                </>
+              )}
             </StatSection>
 
             {/* Lijstjes */}
@@ -1257,6 +1341,13 @@ const styles = {
   imageUploadHint: { fontSize: '0.85rem', color: '#aaa' },
   importRow: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
   importButton: { padding: '0.75rem 0.875rem', backgroundColor: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
+  // Org sub-tabs
+  orgSubTabs: { display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' },
+  orgSubTab: { display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1rem', backgroundColor: '#f0f0f0', border: '1.5px solid transparent', borderRadius: '10px', fontSize: '0.875rem', fontWeight: '700', color: '#888', cursor: 'pointer', fontFamily: 'inherit' },
+  orgSubTabActiveReal: { backgroundColor: '#E3F2FD', borderColor: '#1565C0', color: '#1565C0' },
+  orgSubTabActiveStandalone: { backgroundColor: '#EDE7F6', borderColor: '#5C35A0', color: '#5C35A0' },
+  orgSubTabCount: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '22px', height: '22px', borderRadius: '20px', backgroundColor: '#ddd', color: '#666', fontSize: '0.72rem', fontWeight: '800', padding: '0 5px' },
+  standaloneBadge: { fontSize: '0.68rem', fontWeight: '700', color: '#5C35A0', backgroundColor: '#EDE7F6', padding: '0.1rem 0.45rem', borderRadius: '20px', whiteSpace: 'nowrap' },
   // Stat detail sheet
   statSection: { display: 'flex', flexDirection: 'column', gap: '0' },
   statSectionTitle: { fontSize: '0.78rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.5rem' },
