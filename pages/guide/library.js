@@ -43,14 +43,13 @@ function ProductImage({ url, alt, style, placeholderSize = '1.75rem' }) {
 // ---------------------------------------------------------------------------
 function fuzzyMatch(needle, haystack) {
   if (!needle) return true;
-  const n = needle.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const h = haystack.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const normalize = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const n = normalize(needle);
+  const h = normalize(haystack);
   if (h.includes(n)) return true;
-  let ni = 0;
-  for (let hi = 0; hi < h.length && ni < n.length; hi++) {
-    if (h[hi] === n[ni]) ni++;
-  }
-  return ni === n.length;
+  const needleWords = n.split(/\s+/).filter(Boolean);
+  const haystackWords = h.split(/[\s/,()\-]+/).filter(Boolean);
+  return needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)));
 }
 
 // ---------------------------------------------------------------------------
