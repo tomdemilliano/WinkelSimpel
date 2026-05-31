@@ -351,14 +351,33 @@ function ProductCard({ product, category, onEdit, onDelete, onCopy }) {
         )}
       </div>
       <div style={styles.cardActions}>
-        {!isCentral && <button style={styles.editButton} onClick={onEdit}>Bewerken</button>}
-        {!isCentral && <button style={styles.deleteButton} onClick={onDelete}>Verwijderen</button>}
-        {isCentral && (
-          <>
-            <button style={styles.copyButton} onClick={onCopy}>Kopieer</button>
-            <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alleen-lezen</span>
-          </>
+        {!isCentral && (
+          <button style={styles.editIconButton} onClick={onEdit} aria-label="Bewerken">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
         )}
+        {!isCentral && (
+          <button style={styles.deleteIconButton} onClick={onDelete} aria-label="Verwijderen">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+          </button>
+        )}
+        {isCentral && (
+          <button style={styles.copyIconButton} onClick={onCopy} aria-label="Kopiëren naar mijn bibliotheek">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+        )}
+        {isCentral && <span style={{ fontSize: '0.65rem', color: '#aaa', textAlign: 'center' }}>Lees-only</span>}
       </div>
     </div>
   );
@@ -781,12 +800,14 @@ const styles = {
   },
   cardBody: {
     flex: 1,
+    minWidth: 0,
   },
   cardName: {
     fontSize: '1rem',
     fontWeight: '600',
     color: '#1a1a1a',
     margin: '0 0 0.2rem',
+    wordBreak: 'break-word',
   },
   cardUnit: {
     fontSize: '0.8rem',
@@ -797,16 +818,21 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.4rem',
+    flexShrink: 0,
+    alignItems: 'center',
   },
-  editButton: {
-    padding: '0.35rem 0.75rem',
+  editIconButton: {
+    width: '34px',
+    height: '34px',
     backgroundColor: '#E3F2FD',
     color: '#1565C0',
     border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.8rem',
-    fontWeight: '600',
+    borderRadius: '8px',
     cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
   centralWarning: {
     fontSize: '0.8rem',
@@ -826,25 +852,31 @@ const styles = {
     borderRadius: '20px',
     whiteSpace: 'nowrap',
   },
-  deleteButton: {
-    padding: '0.35rem 0.75rem',
+  deleteIconButton: {
+    width: '34px',
+    height: '34px',
     backgroundColor: '#FFEBEE',
     color: '#c62828',
     border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.8rem',
-    fontWeight: '600',
+    borderRadius: '8px',
     cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
-  copyButton: {
-    padding: '0.35rem 0.75rem',
+  copyIconButton: {
+    width: '34px',
+    height: '34px',
     backgroundColor: '#E8F5E9',
     color: '#2E7D32',
     border: 'none',
-    borderRadius: '6px',
-    fontSize: '0.8rem',
-    fontWeight: '600',
+    borderRadius: '8px',
     cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
   centered: {
     display: 'flex',
@@ -873,6 +905,7 @@ const styles = {
     maxWidth: '600px',
     maxHeight: '92vh',
     overflowY: 'auto',
+    boxSizing: 'border-box',
   },
   modalHeader: {
     display: 'flex',

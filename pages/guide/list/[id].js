@@ -284,8 +284,10 @@ function ListDetail({ claims }) {
   const isActive = list.status === 'active';
   const isCompleted = list.status === 'completed';
 
+  const actionBarPadding = isCompleted ? '1.5rem' : isActive ? '17rem' : '9rem';
+
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, paddingBottom: actionBarPadding }}>
       {/* Header */}
       <div style={styles.header}>
         <button style={styles.backButton} onClick={() => router.push('/guide/lists')}>
@@ -971,7 +973,6 @@ const styles = {
     padding: '1.5rem',
     maxWidth: '600px',
     margin: '0 auto',
-    paddingBottom: '6rem',
   },
   header: {
     display: 'flex',
