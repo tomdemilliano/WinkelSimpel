@@ -284,8 +284,10 @@ function ListDetail({ claims }) {
   const isActive = list.status === 'active';
   const isCompleted = list.status === 'completed';
 
+  const actionBarPadding = isCompleted ? '1.5rem' : isActive ? '17rem' : '9rem';
+
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, paddingBottom: actionBarPadding }}>
       {/* Header */}
       <div style={styles.header}>
         <button style={styles.backButton} onClick={() => router.push('/guide/lists')}>
@@ -532,14 +534,13 @@ function StatusBadge({ status }) {
 // ---------------------------------------------------------------------------
 function fuzzyMatch(needle, haystack) {
   if (!needle) return true;
-  const n = needle.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const h = haystack.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const normalize = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const n = normalize(needle);
+  const h = normalize(haystack);
   if (h.includes(n)) return true;
-  let ni = 0;
-  for (let hi = 0; hi < h.length && ni < n.length; hi++) {
-    if (h[hi] === n[ni]) ni++;
-  }
-  return ni === n.length;
+  const needleWords = n.split(/\s+/).filter(Boolean);
+  const haystackWords = h.split(/[\s/,()\-]+/).filter(Boolean);
+  return needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)));
 }
 
 function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }) {
@@ -971,7 +972,6 @@ const styles = {
     padding: '1.5rem',
     maxWidth: '600px',
     margin: '0 auto',
-    paddingBottom: '6rem',
   },
   header: {
     display: 'flex',
@@ -1351,7 +1351,7 @@ const styles = {
   itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem', marginTop: '0.2rem' },
   itemCategoryIcon: { width: '14px', height: '14px', objectFit: 'contain', flexShrink: 0 },
   itemCategoryLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
-  categoryGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', paddingBottom: '0.5rem', flexShrink: 0 },
+  categoryGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', paddingBottom: '0.5rem', maxHeight: '35vh', overflowY: 'auto' },
   categoryGridTile: { position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, borderRadius: '12px', border: '2px solid #eee', backgroundColor: '#fff', cursor: 'pointer', overflow: 'hidden' },
   categoryGridTileActive: { borderColor: '#5B9BD5', borderWidth: '2.5px', backgroundColor: '#EBF4FF' },
   categoryGridIconBox: { width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' },
