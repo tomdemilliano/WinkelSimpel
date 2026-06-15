@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
-import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory, CategoryFactory, CentralCategoryFactory } from '../../lib/dbSchema';
+import { ProductFactory, StorageFactory, CentralProductFactory, ProductSubmissionFactory, CategoryFactory, CentralCategoryFactory, TagFactory } from '../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
 // ProductImage — toont afbeelding of standaard winkeltas icon
@@ -41,15 +41,18 @@ function ProductImage({ url, alt, style, placeholderSize = '1.75rem' }) {
 // ---------------------------------------------------------------------------
 // Fuzzy match — zelfde logica als in de ProductPicker
 // ---------------------------------------------------------------------------
-function fuzzyMatch(needle, haystack) {
-  if (!needle) return true;
+function fuzzyScore(needle, haystack) {
+  if (!needle) return 0;
   const normalize = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const n = normalize(needle);
   const h = normalize(haystack);
-  if (h.includes(n)) return true;
+  if (h === n) return 100;
+  if (h.startsWith(n)) return 80;
+  if (h.includes(n)) return 60;
   const needleWords = n.split(/\s+/).filter(Boolean);
   const haystackWords = h.split(/[\s/,()\-]+/).filter(Boolean);
-  return needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)));
+  if (!needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)))) return 0;
+  return needleWords.every(nw => haystackWords.some(hw => hw.startsWith(nw))) ? 40 : 20;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +72,7 @@ function ProductLibrary({ claims }) {
   const [centralProducts, setCentralProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [centralCategories, setCentralCategories] = useState([]);
+  const [tags, setTags] = useState([]);
 
   // Load products on mount
   useEffect(() => {
@@ -78,16 +82,18 @@ function ProductLibrary({ claims }) {
   async function loadProducts() {
     setLoading(true);
     try {
-      const [orgSnap, centralSnap, catSnap, centralCatSnap] = await Promise.all([
+      const [orgSnap, centralSnap, catSnap, centralCatSnap, tagSnap] = await Promise.all([
         ProductFactory.getAll(orgId),
         CentralProductFactory.getAll(),
         CategoryFactory.getAll(orgId),
         CentralCategoryFactory.getAll(),
+        TagFactory.getAll(orgId),
       ]);
       setProducts(orgSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'org' })));
       setCentralProducts(centralSnap.docs.map((d) => ({ id: d.id, ...d.data(), _source: 'central' })));
       setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setCentralCategories(centralCatSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setTags(tagSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -189,18 +195,27 @@ function ProductLibrary({ claims }) {
   });
   sidebarCategories.sort((a, b) => a.name.localeCompare(b.name, 'nl'));
 
-  const filteredProducts = allProducts.filter((p) => {
-    const cat = p._source === 'central'
-      ? centralCategories.find(c => c.id === p.centralCategoryId)
-      : categories.find(c => c.id === p.categoryId);
-    const matchesSearch = !searchQuery || fuzzyMatch(searchQuery, p.name) || (cat && fuzzyMatch(searchQuery, cat.name));
-    if (!matchesSearch) return false;
-    if (!selectedCategoryKey) return true;
-    const [src, catId] = selectedCategoryKey.split(':');
-    if (src === 'org') return p._source === 'org' && p.categoryId === catId;
-    if (src === 'central') return p._source === 'central' && p.centralCategoryId === catId;
-    return true;
-  });
+  const filteredProducts = (() => {
+    const withScore = allProducts.map((p) => {
+      const cat = p._source === 'central'
+        ? centralCategories.find(c => c.id === p.centralCategoryId)
+        : categories.find(c => c.id === p.categoryId);
+      const score = searchQuery
+        ? Math.max(fuzzyScore(searchQuery, p.name), cat ? fuzzyScore(searchQuery, cat.name) : 0)
+        : 0;
+      return { ...p, _score: score };
+    });
+    return withScore
+      .filter((p) => {
+        if (searchQuery && p._score === 0) return false;
+        if (!selectedCategoryKey) return true;
+        const [src, catId] = selectedCategoryKey.split(':');
+        if (src === 'org') return p._source === 'org' && p.categoryId === catId;
+        if (src === 'central') return p._source === 'central' && p.centralCategoryId === catId;
+        return true;
+      })
+      .sort((a, b) => searchQuery ? b._score - a._score : 0);
+  })();
 
   return (
     <div style={styles.page}>
@@ -295,6 +310,7 @@ function ProductLibrary({ claims }) {
                         ? (centralCategories.find(c => c.id === product.centralCategoryId) || null)
                         : (categories.find(c => c.id === product.categoryId) || null)
                     }
+                    productTags={product._source === 'org' ? (product.tagIds || []).map(id => tags.find(t => t.id === id)).filter(Boolean) : []}
                     onEdit={() => handleEdit(product)}
                     onDelete={() => handleDelete(product)}
                     onCopy={() => handleCopyFromCentral(product)}
@@ -312,6 +328,7 @@ function ProductLibrary({ claims }) {
           orgId={orgId}
           product={editingProduct}
           categories={categories}
+          tags={tags}
           onSave={handleFormSave}
           onClose={handleFormClose}
           claims={claims}
@@ -324,7 +341,7 @@ function ProductLibrary({ claims }) {
 // ---------------------------------------------------------------------------
 // ProductCard
 // ---------------------------------------------------------------------------
-function ProductCard({ product, category, onEdit, onDelete, onCopy }) {
+function ProductCard({ product, category, productTags = [], onEdit, onDelete, onCopy }) {
   const isCentral = product._source === 'central';
   const isLinkedToCentral = product._source === 'org' && !!product._centralProduct;
   return (
@@ -346,6 +363,16 @@ function ProductCard({ product, category, onEdit, onDelete, onCopy }) {
               <img src={category.iconUrl} alt="" style={styles.categoryBadgeIcon} referrerPolicy="no-referrer" />
             )}
             <span style={styles.categoryBadgeLabel}>{category.name}</span>
+          </div>
+        )}
+        {productTags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
+            {productTags.map(tag => (
+              <span key={tag.id} style={styles.tagChip}>
+                {tag.imageUrl && <img src={tag.imageUrl} alt="" style={styles.tagChipIcon} referrerPolicy="no-referrer" />}
+                <span>{tag.name}</span>
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -385,12 +412,13 @@ function ProductCard({ product, category, onEdit, onDelete, onCopy }) {
 // ---------------------------------------------------------------------------
 // ProductForm (modal)
 // ---------------------------------------------------------------------------
-function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
+function ProductForm({ orgId, product, categories, tags, onSave, onClose, claims }) {
   const isEditing = !!product;
 
   const [name, setName] = useState(product?.name || '');
   const [unit, setUnit] = useState(product?.unit || 'stuks');
   const [categoryId, setCategoryId] = useState(product?.categoryId || '');
+  const [tagIds, setTagIds] = useState(product?.tagIds || []);
   const [imageFile, setImageFile] = useState(null);
   // imagePreview toont altijd de meest recente afbeelding (upload, import of bestaande URL)
   const [imagePreview, setImagePreview] = useState(product?.imageUrl || null);
@@ -472,6 +500,24 @@ function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
     setError('');
   }
 
+  function toggleTag(tagId) {
+    setTagIds(prev => {
+      if (prev.includes(tagId)) return prev.filter(id => id !== tagId);
+      if (prev.length >= 3) return prev;
+      return [...prev, tagId];
+    });
+  }
+
+  function moveTag(index, direction) {
+    setTagIds(prev => {
+      const next = [...prev];
+      const swapIdx = index + direction;
+      if (swapIdx < 0 || swapIdx >= next.length) return prev;
+      [next[index], next[swapIdx]] = [next[swapIdx], next[index]];
+      return next;
+    });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) {
@@ -499,8 +545,8 @@ function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
           imageUrl = importedImageUrl;
         }
 
-        await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl, categoryId: categoryId || null });
-        onSave({ id: product.id, name: name.trim(), unit, imageUrl, categoryId: categoryId || null });
+        await ProductFactory.update(orgId, product.id, { name: name.trim(), unit, imageUrl, categoryId: categoryId || null, tagIds });
+        onSave({ id: product.id, name: name.trim(), unit, imageUrl, categoryId: categoryId || null, tagIds });
       } else {
         // Create new product
         const catId = categoryId || null;
@@ -511,32 +557,35 @@ function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
             imageUrl: '',
             unit,
             categoryId: catId,
+            tagIds,
             createdBy: claims.uid,
           });
           const imageUrl = await StorageFactory.uploadProductImage(orgId, docRef.id, imageFile);
           await ProductFactory.update(orgId, docRef.id, { imageUrl });
           await submitToCentral(docRef.id, name.trim(), imageUrl, unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl, categoryId: catId });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl, categoryId: catId, tagIds });
         } else if (importedImageUrl?.trim()) {
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: importedImageUrl.trim(),
             unit,
             categoryId: catId,
+            tagIds,
             createdBy: claims.uid,
           });
           await submitToCentral(docRef.id, name.trim(), importedImageUrl.trim(), unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim(), categoryId: catId });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: importedImageUrl.trim(), categoryId: catId, tagIds });
         } else {
           const docRef = await ProductFactory.create(orgId, {
             name: name.trim(),
             imageUrl: '',
             unit,
             categoryId: catId,
+            tagIds,
             createdBy: claims.uid,
           });
           await submitToCentral(docRef.id, name.trim(), '', unit);
-          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '', categoryId: catId });
+          onSave({ id: docRef.id, name: name.trim(), unit, imageUrl: '', categoryId: catId, tagIds });
         }
       }
     } catch (err) {
@@ -689,6 +738,61 @@ function ProductForm({ orgId, product, categories, onSave, onClose, claims }) {
               </select>
             )}
           </div>
+
+          {/* Tags */}
+          {tags.length > 0 && (
+            <div style={styles.field}>
+              <label style={styles.label}>Tags (optioneel, max. 3)</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                {tags.map(tag => {
+                  const isSelected = tagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleTag(tag.id)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                        padding: '0.35rem 0.65rem', borderRadius: '20px',
+                        border: `1.5px solid ${isSelected ? '#5B9BD5' : '#ddd'}`,
+                        backgroundColor: isSelected ? '#EBF4FF' : '#f9f9f9',
+                        color: isSelected ? '#1565C0' : '#555',
+                        fontSize: '0.82rem', fontWeight: '600',
+                        cursor: tagIds.length >= 3 && !isSelected ? 'not-allowed' : 'pointer',
+                        opacity: tagIds.length >= 3 && !isSelected ? 0.45 : 1,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      {tag.imageUrl && <img src={tag.imageUrl} alt="" style={{ width: '16px', height: '16px', objectFit: 'contain' }} referrerPolicy="no-referrer" />}
+                      {tag.name}
+                      {isSelected && <span style={{ fontWeight: '700' }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Volgorde van geselecteerde tags */}
+              {tagIds.length > 1 && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <p style={{ fontSize: '0.78rem', color: '#888', margin: '0 0 0.3rem' }}>Volgorde (gebruik pijlen om te wijzigen):</p>
+                  {tagIds.map((id, idx) => {
+                    const tag = tags.find(t => t.id === id);
+                    if (!tag) return null;
+                    return (
+                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#444', flex: 1 }}>
+                          {idx + 1}. {tag.name}
+                        </span>
+                        <button type="button" onClick={() => moveTag(idx, -1)} disabled={idx === 0}
+                          style={{ padding: '0.1rem 0.4rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f5f5f5', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.3 : 1 }}>↑</button>
+                        <button type="button" onClick={() => moveTag(idx, 1)} disabled={idx === tagIds.length - 1}
+                          style={{ padding: '0.1rem 0.4rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f5f5f5', cursor: idx === tagIds.length - 1 ? 'default' : 'pointer', opacity: idx === tagIds.length - 1 ? 0.3 : 1 }}>↓</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {error && <p style={styles.errorText}>{error}</p>}
 
@@ -1101,5 +1205,20 @@ const styles = {
     fontWeight: '600',
     color: '#795548',
     whiteSpace: 'nowrap',
+  },
+  tagChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.25rem',
+    backgroundColor: '#E8F5E9',
+    border: '1px solid #A5D6A7',
+    borderRadius: '20px',
+    padding: '0.1rem 0.45rem',
+  },
+  tagChipIcon: {
+    width: '14px',
+    height: '14px',
+    objectFit: 'contain',
+    flexShrink: 0,
   },
 };

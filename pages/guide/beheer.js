@@ -29,6 +29,17 @@ function CategoryIllustration() {
   );
 }
 
+function TagIllustration() {
+  return (
+    <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 8h16a2 2 0 0 1 1.4.6l18 18a2 2 0 0 1 0 2.8l-12 12a2 2 0 0 1-2.8 0l-18-18A2 2 0 0 1 10 22V10a2 2 0 0 1 2-2z" fill="#EBF4FF" stroke="#5B9BD5" strokeWidth="2"/>
+      <circle cx="17" cy="17" r="3.5" fill="#5B9BD5"/>
+      <path d="M24 30l6-6" stroke="#5B9BD5" strokeWidth="2" strokeLinecap="round" opacity="0.5"/>
+      <path d="M28 34l6-6" stroke="#5B9BD5" strokeWidth="2" strokeLinecap="round" opacity="0.3"/>
+    </svg>
+  );
+}
+
 function Beheer() {
   const router = useRouter();
 
@@ -44,6 +55,12 @@ function Beheer() {
       label: 'Categorieën',
       description: 'Productcategorieën en pictogrammen beheren',
       href: '/guide/categories',
+    },
+    {
+      Illustration: TagIllustration,
+      label: 'Tags',
+      description: 'Productkenmerken beheren (diepvries, halal, …)',
+      href: '/guide/tags',
     },
   ];
 

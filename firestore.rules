@@ -88,6 +88,12 @@ service cloud.firestore {
                                && request.auth.token.role in ['guide', 'org_admin']);
       }
 
+      match /tags/{tagId} {
+        allow read, write: if request.auth.token.role == 'app_admin'
+                           || (request.auth.token.orgId == orgId
+                               && request.auth.token.role in ['guide', 'org_admin']);
+      }
+
       match /shoppingLists/{listId} {
         allow read, write: if request.auth.token.role == 'app_admin'
                            || (request.auth.token.orgId == orgId

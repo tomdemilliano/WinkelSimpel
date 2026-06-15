@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "accessRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "targetOrgId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accessRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requestingUserId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

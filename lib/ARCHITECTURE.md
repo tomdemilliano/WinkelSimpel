@@ -32,6 +32,7 @@ organizations/{orgId}
     Fields:
       name: string
       memberIds: string[] (verwijst naar members/{userId})
+      imageUrl: string | null (Firebase Storage URL)
       createdAt: timestamp
 
   categories/{categoryId}
@@ -50,9 +51,17 @@ organizations/{orgId}
       imageUrl: string (Firebase Storage URL of externe URL)
       unit: string ('stuks' | 'pak' | 'fles' | 'blik' | 'zak' | 'doos' | 'pot' | 'kg')
       categoryId: string | null (verwijst naar categories/{categoryId} binnen dezelfde org)
+      tagIds: string[] (geordend, max 3; verwijst naar tags/{tagId} binnen dezelfde org)
       createdBy: string (userId)
       createdAt: timestamp
       centralProductId?: string  — aanwezig als dit product gekoppeld is aan een centraal product
+
+  tags/{tagId}
+    Fields:
+      name: string
+      imageUrl: string | null (Firebase Storage URL)
+      createdBy: string (userId)
+      createdAt: timestamp
 
   stores/{storeId}
     Fields:
@@ -85,6 +94,7 @@ organizations/{orgId}
         categoryId: string | null   (snapshot)
         categoryName: string | null (snapshot)
         categoryIconUrl: string | null (snapshot)
+        tags: [{ tagId, tagName, tagImageUrl }] (snapshot, geordend, max 3)
         quantity: number
         checked: boolean
         order: number (volgorde in het lijstje)
@@ -206,6 +216,7 @@ organizations/{orgId}/products/{productId}/{timestamp}.{ext}    → productfoto'
 organizations/{orgId}/rewards/{timestamp}.{ext}                 → beloningsafbeeldingen
 organizations/{orgId}/categories/{categoryId}/{timestamp}.{ext} → categorie-iconen (eigen uploads)
 organizations/{orgId}/stores/{storeId}/{timestamp}.{ext}        → winkellogo's
+organizations/{orgId}/tags/{tagId}/{timestamp}.{ext}            → tag-afbeeldingen
 ```
 
 Externe afbeeldingen (ARASAAC-pictogrammen, geïmporteerde productfoto's) worden als URL opgeslagen in Firestore en niet gekopieerd naar Storage.
@@ -255,6 +266,7 @@ export const OrganizationFactory = {
 | `CategoryFactory` | `organizations/{orgId}/categories/` | Org-specifieke categorieën |
 | `ProductFactory` | `organizations/{orgId}/products/` | Org-specifieke producten |
 | `StoreFactory` | `organizations/{orgId}/stores/` | Org-specifieke winkels/ketens |
+| `TagFactory` | `organizations/{orgId}/tags/` | Org-specifieke producttags |
 | `ShoppingListFactory` | `organizations/{orgId}/shoppingLists/` | Boodschappenlijstjes |
 | `ListItemFactory` | `organizations/{orgId}/shoppingLists/{listId}/items/` | Items in een lijstje |
 | `StorageFactory` | Firebase Storage | Upload/delete van afbeeldingen |
