@@ -553,15 +553,18 @@ function StatusBadge({ status }) {
 // ---------------------------------------------------------------------------
 // ProductPicker (modal)
 // ---------------------------------------------------------------------------
-function fuzzyMatch(needle, haystack) {
-  if (!needle) return true;
+function fuzzyScore(needle, haystack) {
+  if (!needle) return 0;
   const normalize = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const n = normalize(needle);
   const h = normalize(haystack);
-  if (h.includes(n)) return true;
+  if (h === n) return 100;
+  if (h.startsWith(n)) return 80;
+  if (h.includes(n)) return 60;
   const needleWords = n.split(/\s+/).filter(Boolean);
   const haystackWords = h.split(/[\s/,()\-]+/).filter(Boolean);
-  return needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)));
+  if (!needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)))) return 0;
+  return needleWords.every(nw => haystackWords.some(hw => hw.startsWith(nw))) ? 40 : 20;
 }
 
 function ProductPicker({ orgId, existingProductIds, categories, tags, onAdd, onClose }) {
@@ -659,13 +662,16 @@ function ProductPicker({ orgId, existingProductIds, categories, tags, onAdd, onC
   const filterTags = (tags || []).filter(t => usedTagIds.has(t.id));
   const appliedTagsList = filterTags.filter(t => appliedTagIds.has(t.id));
 
-  const filtered = availableProducts.filter((p) => {
-    const matchesSearch = !search || fuzzyMatch(search, p.name);
-    const matchesCategory = appliedCategoryIds.size === 0 || appliedCategoryIds.has(p.categoryId);
-    const matchesTags = appliedTagIds.size === 0 ||
-      [...appliedTagIds].every(tagId => (p.tagIds || []).includes(tagId));
-    return matchesSearch && matchesCategory && matchesTags;
-  });
+  const filtered = availableProducts
+    .map(p => ({ ...p, _score: search ? fuzzyScore(search, p.name) : 0 }))
+    .filter((p) => {
+      if (search && p._score === 0) return false;
+      const matchesCategory = appliedCategoryIds.size === 0 || appliedCategoryIds.has(p.categoryId);
+      const matchesTags = appliedTagIds.size === 0 ||
+        [...appliedTagIds].every(tagId => (p.tagIds || []).includes(tagId));
+      return matchesCategory && matchesTags;
+    })
+    .sort((a, b) => search ? b._score - a._score : 0);
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>

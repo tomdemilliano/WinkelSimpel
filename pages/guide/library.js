@@ -41,15 +41,18 @@ function ProductImage({ url, alt, style, placeholderSize = '1.75rem' }) {
 // ---------------------------------------------------------------------------
 // Fuzzy match — zelfde logica als in de ProductPicker
 // ---------------------------------------------------------------------------
-function fuzzyMatch(needle, haystack) {
-  if (!needle) return true;
+function fuzzyScore(needle, haystack) {
+  if (!needle) return 0;
   const normalize = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const n = normalize(needle);
   const h = normalize(haystack);
-  if (h.includes(n)) return true;
+  if (h === n) return 100;
+  if (h.startsWith(n)) return 80;
+  if (h.includes(n)) return 60;
   const needleWords = n.split(/\s+/).filter(Boolean);
   const haystackWords = h.split(/[\s/,()\-]+/).filter(Boolean);
-  return needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)));
+  if (!needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)))) return 0;
+  return needleWords.every(nw => haystackWords.some(hw => hw.startsWith(nw))) ? 40 : 20;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,18 +195,27 @@ function ProductLibrary({ claims }) {
   });
   sidebarCategories.sort((a, b) => a.name.localeCompare(b.name, 'nl'));
 
-  const filteredProducts = allProducts.filter((p) => {
-    const cat = p._source === 'central'
-      ? centralCategories.find(c => c.id === p.centralCategoryId)
-      : categories.find(c => c.id === p.categoryId);
-    const matchesSearch = !searchQuery || fuzzyMatch(searchQuery, p.name) || (cat && fuzzyMatch(searchQuery, cat.name));
-    if (!matchesSearch) return false;
-    if (!selectedCategoryKey) return true;
-    const [src, catId] = selectedCategoryKey.split(':');
-    if (src === 'org') return p._source === 'org' && p.categoryId === catId;
-    if (src === 'central') return p._source === 'central' && p.centralCategoryId === catId;
-    return true;
-  });
+  const filteredProducts = (() => {
+    const withScore = allProducts.map((p) => {
+      const cat = p._source === 'central'
+        ? centralCategories.find(c => c.id === p.centralCategoryId)
+        : categories.find(c => c.id === p.categoryId);
+      const score = searchQuery
+        ? Math.max(fuzzyScore(searchQuery, p.name), cat ? fuzzyScore(searchQuery, cat.name) : 0)
+        : 0;
+      return { ...p, _score: score };
+    });
+    return withScore
+      .filter((p) => {
+        if (searchQuery && p._score === 0) return false;
+        if (!selectedCategoryKey) return true;
+        const [src, catId] = selectedCategoryKey.split(':');
+        if (src === 'org') return p._source === 'org' && p.categoryId === catId;
+        if (src === 'central') return p._source === 'central' && p.centralCategoryId === catId;
+        return true;
+      })
+      .sort((a, b) => searchQuery ? b._score - a._score : 0);
+  })();
 
   return (
     <div style={styles.page}>
