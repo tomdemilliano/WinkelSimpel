@@ -8,7 +8,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { withRoleGuard, ROLES } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
-import { GroupFactory, MemberFactory, AccessRequestFactory } from '../../lib/dbSchema';
+import { GroupFactory, MemberFactory, AccessRequestFactory, StorageFactory } from '../../lib/dbSchema';
 import { generateQrToken } from '../../lib/qr';
 
 function GroupsAndMembers({ claims }) {
@@ -349,6 +349,8 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef(null);
   // Lokale kopie van memberIds zodat suggestions meteen bijwerken na toevoegen
   const [localMemberIds, setLocalMemberIds] = useState(group.memberIds || []);
 
@@ -356,6 +358,30 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
   useEffect(() => {
     setLocalMemberIds(group.memberIds || []);
   }, [group.memberIds]);
+
+  async function handleImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      if (group.imageUrl) {
+        try { await StorageFactory.deleteByUrl(group.imageUrl); } catch {}
+      }
+      const url = await StorageFactory.uploadGroupImage(orgId, group.id, file);
+      await GroupFactory.update(orgId, group.id, { imageUrl: url });
+      await onReload();
+    } catch { alert('Uploaden mislukt.'); }
+    finally { setUploadingImage(false); e.target.value = ''; }
+  }
+
+  async function handleRemoveImage() {
+    if (!confirm('Afbeelding verwijderen?')) return;
+    try {
+      if (group.imageUrl) await StorageFactory.deleteByUrl(group.imageUrl);
+      await GroupFactory.update(orgId, group.id, { imageUrl: null });
+      await onReload();
+    } catch { alert('Verwijderen mislukt.'); }
+  }
 
   const members = shoppers.filter(s => localMemberIds.includes(s.id));
 
@@ -392,12 +418,41 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
 
   return (
     <div style={styles.groupCard}>
+      {group.imageUrl && (
+        <img
+          src={group.imageUrl}
+          alt={group.name}
+          style={styles.groupImage}
+        />
+      )}
       <div style={styles.groupCardHeader} onClick={() => setExpanded(v => !v)}>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <p style={styles.cardName}>{group.name}</p>
           <p style={styles.cardSub}>{localMemberIds.length} {localMemberIds.length === 1 ? 'lid' : 'leden'}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleImageChange}
+          />
+          <button
+            style={styles.imageButton}
+            onClick={e => { e.stopPropagation(); imageInputRef.current?.click(); }}
+            disabled={uploadingImage}
+            title={group.imageUrl ? 'Afbeelding wijzigen' : 'Afbeelding toevoegen'}
+          >
+            {uploadingImage ? '...' : group.imageUrl ? '🖼' : '📷'}
+          </button>
+          {group.imageUrl && (
+            <button
+              style={styles.deleteSmallButton}
+              onClick={e => { e.stopPropagation(); handleRemoveImage(); }}
+              title="Afbeelding verwijderen"
+            >✕</button>
+          )}
           <button style={styles.editSmallButton} onClick={e => { e.stopPropagation(); onEdit(); }}>✏️</button>
           <button style={styles.deleteSmallButton} onClick={e => { e.stopPropagation(); onDelete(); }}>🗑</button>
           <span style={styles.expandIcon}>{expanded ? '▲' : '▼'}</span>
@@ -456,15 +511,43 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
 // ---------------------------------------------------------------------------
 function EditGroupForm({ orgId, group, onSave, onClose }) {
   const [name, setName] = useState(group.name || '');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(group.imageUrl || null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const imageInputRef = useRef(null);
+
+  function handleImageSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setRemoveImage(false);
+  }
+
+  function handleRemoveImage() {
+    setImageFile(null);
+    setImagePreview(null);
+    setRemoveImage(true);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) { setError('Geef de groep een naam.'); return; }
     setSaving(true);
     try {
-      await GroupFactory.update(orgId, group.id, { name: name.trim() });
+      const updates = { name: name.trim() };
+      if (imageFile) {
+        if (group.imageUrl) {
+          try { await StorageFactory.deleteByUrl(group.imageUrl); } catch {}
+        }
+        updates.imageUrl = await StorageFactory.uploadGroupImage(orgId, group.id, imageFile);
+      } else if (removeImage && group.imageUrl) {
+        try { await StorageFactory.deleteByUrl(group.imageUrl); } catch {}
+        updates.imageUrl = null;
+      }
+      await GroupFactory.update(orgId, group.id, updates);
       onSave();
     } catch { setError('Opslaan mislukt.'); setSaving(false); }
   }
@@ -481,6 +564,30 @@ function EditGroupForm({ orgId, group, onSave, onClose }) {
             <label style={styles.label}>Naam van de groep</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
               style={styles.input} required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Afbeelding</label>
+            <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
+            {imagePreview
+              ? (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                  <img src={imagePreview} alt="Voorbeeld" style={styles.imagePreview} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <button type="button" onClick={() => imageInputRef.current?.click()} style={styles.imagePickerBtn}>
+                      Wijzigen
+                    </button>
+                    <button type="button" onClick={handleRemoveImage} style={{ ...styles.imagePickerBtn, backgroundColor: '#FFEBEE', color: '#c62828' }}>
+                      Verwijderen
+                    </button>
+                  </div>
+                </div>
+              )
+              : (
+                <button type="button" onClick={() => imageInputRef.current?.click()} style={styles.imagePickerBtn}>
+                  📷 Afbeelding kiezen
+                </button>
+              )
+            }
           </div>
           {error && <p style={styles.errorText}>{error}</p>}
           <button type="submit" disabled={saving}
@@ -749,15 +856,29 @@ function NewShopperForm({ orgId, createdBy, onSave, onClose }) {
 // ---------------------------------------------------------------------------
 function NewGroupForm({ orgId, onSave, onClose }) {
   const [name, setName] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const imageInputRef = useRef(null);
+
+  function handleImageSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) { setError('Geef de groep een naam.'); return; }
     setSaving(true);
     try {
-      await GroupFactory.create(orgId, { name: name.trim(), memberIds: [] });
+      const docRef = await GroupFactory.create(orgId, { name: name.trim(), memberIds: [], imageUrl: null });
+      if (imageFile) {
+        const url = await StorageFactory.uploadGroupImage(orgId, docRef.id, imageFile);
+        await GroupFactory.update(orgId, docRef.id, { imageUrl: url });
+      }
       onSave();
     } catch { setError('Aanmaken mislukt.'); setSaving(false); }
   }
@@ -774,6 +895,23 @@ function NewGroupForm({ orgId, onSave, onClose }) {
             <label style={styles.label}>Naam van de groep</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
               style={styles.input} placeholder="bijv. Groep A" required autoFocus />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Afbeelding (optioneel)</label>
+            <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
+            {imagePreview
+              ? (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <img src={imagePreview} alt="Voorbeeld" style={styles.imagePreview} />
+                  <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); }} style={styles.imageRemoveBtn}>✕</button>
+                </div>
+              )
+              : (
+                <button type="button" onClick={() => imageInputRef.current?.click()} style={styles.imagePickerBtn}>
+                  📷 Afbeelding kiezen
+                </button>
+              )
+            }
           </div>
           {error && <p style={styles.errorText}>{error}</p>}
           <button type="submit" disabled={saving}
@@ -1028,8 +1166,13 @@ const styles = {
   qrButton: { padding: '0.3rem 0.6rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' },
   editSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
   deleteSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
-  groupCard: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee' },
+  groupCard: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', overflow: 'hidden' },
+  groupImage: { width: '100%', height: '120px', objectFit: 'cover', display: 'block' },
   groupCardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', cursor: 'pointer' },
+  imageButton: { padding: '0.3rem 0.45rem', backgroundColor: '#F3E5F5', color: '#6A1B9A', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
+  imagePreview: { width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1.5px solid #eee' },
+  imageRemoveBtn: { position: 'absolute', top: '-6px', right: '-6px', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#c62828', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 },
+  imagePickerBtn: { padding: '0.6rem 0.875rem', backgroundColor: '#F3E5F5', color: '#6A1B9A', border: 'none', borderRadius: '8px', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' },
   expandIcon: { fontSize: '0.75rem', color: '#aaa', marginLeft: '0.25rem' },
   groupMemberList: { borderTop: '1px solid #f0f0f0', padding: '0.75rem' },
   tagContainer: { display: 'flex', flexWrap: 'wrap', gap: '0.4rem', minHeight: '28px' },

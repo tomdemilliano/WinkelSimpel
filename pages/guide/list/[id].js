@@ -35,6 +35,7 @@ import {
   GroupFactory,
   StoreFactory,
   CategoryFactory,
+  TagFactory,
 } from '../../../lib/dbSchema';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,7 @@ function ListDetail({ claims }) {
   const [members, setMembers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [categories, setCategories] = useState({});
+  const [tags, setTags] = useState([]);
 
   useEffect(() => {
     if (!listId) return;
@@ -89,17 +91,19 @@ function ListDetail({ claims }) {
       storesSnap.docs.forEach(d => { storeMap[d.id] = { id: d.id, ...d.data() }; });
       setStores(storeMap);
 
-      // Laad members, groups en categorieën
-      const [membersSnap, groupsSnap, catSnap] = await Promise.all([
+      // Laad members, groups, categorieën en tags
+      const [membersSnap, groupsSnap, catSnap, tagSnap] = await Promise.all([
         MemberFactory.getByRole(orgId, 'shopper'),
         GroupFactory.getAll(orgId),
         CategoryFactory.getAll(orgId),
+        TagFactory.getAll(orgId),
       ]);
       setMembers(membersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setGroups(groupsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       const catMap = {};
       catSnap.docs.forEach(d => { catMap[d.id] = { id: d.id, ...d.data() }; });
       setCategories(catMap);
+      setTags(tagSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       
       // Resolve assigned label
       if (listData.assignedTo?.type === 'member') {
@@ -131,12 +135,17 @@ function ListDetail({ claims }) {
   async function handleAddProducts(selectedProducts) {
     setShowProductPicker(false);
     const startOrder = items.length;
+    const tagsById = Object.fromEntries(tags.map(t => [t.id, t]));
 
     try {
       const newItems = await Promise.all(
         selectedProducts.map((product, index) => {
           const store = product.storeId ? stores[product.storeId] : null;
           const category = product.categoryId ? categories[product.categoryId] : null;
+          const tagSnapshots = (product.tagIds || [])
+            .map(id => tagsById[id])
+            .filter(Boolean)
+            .map(t => ({ tagId: t.id, tagName: t.name, tagImageUrl: t.imageUrl || null }));
           return ListItemFactory.create(orgId, listId, {
             productId: product.id,
             productName: product.name,
@@ -148,6 +157,7 @@ function ListDetail({ claims }) {
             categoryId: product.categoryId || null,
             categoryName: category?.name || null,
             categoryIconUrl: category?.iconUrl || null,
+            tags: tagSnapshots,
             quantity: 1,
             order: startOrder + index,
           }).then((ref) => ({
@@ -162,6 +172,7 @@ function ListDetail({ claims }) {
             categoryId: product.categoryId || null,
             categoryName: category?.name || null,
             categoryIconUrl: category?.iconUrl || null,
+            tags: tagSnapshots,
             quantity: 1,
             order: startOrder + index,
             checked: false,
@@ -419,6 +430,7 @@ function ListDetail({ claims }) {
           orgId={orgId}
           existingProductIds={items.map((i) => i.productId)}
           categories={categories}
+          tags={tags}
           onAdd={handleAddProducts}
           onClose={() => setShowProductPicker(false)}
         />
@@ -475,12 +487,21 @@ function ItemRow({ item, index, total, isEditable, categories, onQuantityChange,
             <span style={styles.itemStoreName}>{item.storeName}</span>
           </div>
         )}
-        {categoryName && (
-          <div style={styles.itemCategoryBadge}>
-            {categoryIconUrl && (
-              <img src={categoryIconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
+        {(categoryName || (item.tags && item.tags.length > 0)) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.2rem' }}>
+            {categoryName && (
+              <div style={styles.itemCategoryBadge}>
+                {categoryIconUrl && (
+                  <img src={categoryIconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
+                )}
+                <span style={styles.itemCategoryLabel}>{categoryName}</span>
+              </div>
             )}
-            <span style={styles.itemCategoryLabel}>{categoryName}</span>
+            {(item.tags || []).map(tag => (
+              <div key={tag.tagId} style={styles.itemTagBadge}>
+                <span style={styles.itemTagLabel}>{tag.tagName}</span>
+              </div>
+            ))}
           </div>
         )}
         {item.checked && <p style={styles.itemChecked}>✓ Genomen</p>}
@@ -543,7 +564,7 @@ function fuzzyMatch(needle, haystack) {
   return needleWords.every(nw => haystackWords.some(hw => hw.includes(nw)));
 }
 
-function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }) {
+function ProductPicker({ orgId, existingProductIds, categories, tags, onAdd, onClose }) {
   const [products, setProducts] = useState([]);
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState('');
@@ -551,6 +572,9 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
   const [gridExpanded, setGridExpanded] = useState(false);
   const [pendingCategoryIds, setPendingCategoryIds] = useState(new Set());
   const [appliedCategoryIds, setAppliedCategoryIds] = useState(new Set());
+  const [pendingTagIds, setPendingTagIds] = useState(new Set());
+  const [appliedTagIds, setAppliedTagIds] = useState(new Set());
+  const [tagGridExpanded, setTagGridExpanded] = useState(false);
 
   useEffect(() => {
     ProductFactory.getAll(orgId).then((snap) => {
@@ -570,6 +594,7 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
   function openGrid() {
     setPendingCategoryIds(new Set(appliedCategoryIds));
     setGridExpanded(true);
+    setTagGridExpanded(false);
   }
 
   function applyCategories() {
@@ -594,6 +619,34 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
     });
   }
 
+  function openTagGrid() {
+    setPendingTagIds(new Set(appliedTagIds));
+    setTagGridExpanded(true);
+    setGridExpanded(false);
+  }
+
+  function applyTags() {
+    setAppliedTagIds(new Set(pendingTagIds));
+    setTagGridExpanded(false);
+  }
+
+  function togglePendingTag(tagId) {
+    setPendingTagIds(prev => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+  }
+
+  function removeAppliedTag(tagId) {
+    setAppliedTagIds(prev => {
+      const next = new Set(prev);
+      next.delete(tagId);
+      return next;
+    });
+  }
+
   const availableProducts = products.filter(p => !existingProductIds.includes(p.id));
   const usedCategoryIds = new Set(availableProducts.map(p => p.categoryId).filter(Boolean));
   const filterCategories = Object.values(categories)
@@ -602,11 +655,16 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
 
   const appliedCats = filterCategories.filter(c => appliedCategoryIds.has(c.id));
 
+  const usedTagIds = new Set(availableProducts.flatMap(p => p.tagIds || []));
+  const filterTags = (tags || []).filter(t => usedTagIds.has(t.id));
+  const appliedTagsList = filterTags.filter(t => appliedTagIds.has(t.id));
+
   const filtered = availableProducts.filter((p) => {
-    const cat = p.categoryId ? categories[p.categoryId] : null;
-    const matchesSearch = !search || fuzzyMatch(search, p.name) || (cat && fuzzyMatch(search, cat.name));
+    const matchesSearch = !search || fuzzyMatch(search, p.name);
     const matchesCategory = appliedCategoryIds.size === 0 || appliedCategoryIds.has(p.categoryId);
-    return matchesSearch && matchesCategory;
+    const matchesTags = appliedTagIds.size === 0 ||
+      [...appliedTagIds].every(tagId => (p.tagIds || []).includes(tagId));
+    return matchesSearch && matchesCategory && matchesTags;
   });
 
   return (
@@ -675,6 +733,64 @@ function ProductPicker({ orgId, existingProductIds, categories, onAdd, onClose }
                   </button>
                   <button style={styles.applyButton} onClick={applyCategories}>
                     {pendingCategoryIds.size === 0 ? 'Alle tonen' : `${pendingCategoryIds.size} toepassen`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tag filter */}
+        {filterTags.length > 0 && (
+          <div style={{ flexShrink: 0 }}>
+            {!tagGridExpanded && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', paddingBottom: '0.5rem' }}>
+                <button style={styles.categoryToggleButton} onClick={openTagGrid}>
+                  <span>Tags</span>
+                  <span style={{ fontSize: '0.75rem' }}>▼</span>
+                </button>
+                {appliedTagsList.map(tag => (
+                  <span key={tag.id} style={{ ...styles.activeFilterChip, borderColor: '#A5D6A7', backgroundColor: '#E8F5E9', color: '#2E7D32' }}>
+                    {tag.imageUrl && <img src={tag.imageUrl} alt="" style={styles.activeFilterChipIcon} referrerPolicy="no-referrer" />}
+                    <span>{tag.name}</span>
+                    <button style={{ ...styles.pillRemoveBtn, color: '#2E7D32' }} onClick={() => removeAppliedTag(tag.id)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {tagGridExpanded && (
+              <div style={{ paddingBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', paddingBottom: '0.5rem' }}>
+                  {filterTags.map(tag => {
+                    const isPending = pendingTagIds.has(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          padding: '0.4rem 0.75rem', borderRadius: '20px',
+                          border: `1.5px solid ${isPending ? '#4CAF50' : '#ddd'}`,
+                          backgroundColor: isPending ? '#E8F5E9' : '#f9f9f9',
+                          color: isPending ? '#2E7D32' : '#555',
+                          fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                        onClick={() => togglePendingTag(tag.id)}
+                      >
+                        {tag.imageUrl && <img src={tag.imageUrl} alt="" style={{ width: '16px', height: '16px', objectFit: 'contain' }} referrerPolicy="no-referrer" />}
+                        {tag.name}
+                        {isPending && <span>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button style={styles.categoryToggleButton} onClick={() => setTagGridExpanded(false)}>
+                    Annuleren
+                  </button>
+                  <button style={styles.applyButton} onClick={applyTags}>
+                    {pendingTagIds.size === 0 ? 'Alle tonen' : `${pendingTagIds.size} toepassen`}
                   </button>
                 </div>
               </div>
@@ -1348,9 +1464,11 @@ const styles = {
   itemStoreRow: { display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' },
   itemStoreLogo: { width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px' },
   itemStoreName: { fontSize: '0.75rem', color: '#888', fontWeight: '500' },
-  itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem', marginTop: '0.2rem' },
+  itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem' },
   itemCategoryIcon: { width: '14px', height: '14px', objectFit: 'contain', flexShrink: 0 },
   itemCategoryLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
+  itemTagBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: '20px', padding: '0.1rem 0.45rem' },
+  itemTagLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#2E7D32', whiteSpace: 'nowrap' },
   categoryGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', paddingBottom: '0.5rem', maxHeight: '35vh', overflowY: 'auto' },
   categoryGridTile: { position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, borderRadius: '12px', border: '2px solid #eee', backgroundColor: '#fff', cursor: 'pointer', overflow: 'hidden' },
   categoryGridTileActive: { borderColor: '#5B9BD5', borderWidth: '2.5px', backgroundColor: '#EBF4FF' },

@@ -250,9 +250,14 @@ export default function ShopPageClient() {
                     <CartIcon size={36} color={item.checked ? '#aaa' : '#4CAF50'} />
                   </div>
                 )}
-                {!item.checked && item.categoryIconUrl && (
+                {!item.checked && (item.categoryIconUrl || (item.tags && item.tags.some(t => t.tagImageUrl))) && (
                   <div style={styles.overviewCategoryIconOverlay}>
-                    <img src={item.categoryIconUrl} alt={item.categoryName || ''} style={styles.overviewCategoryIconOverlayImg} referrerPolicy="no-referrer" />
+                    {item.categoryIconUrl && (
+                      <img src={item.categoryIconUrl} alt={item.categoryName || ''} style={styles.overviewCategoryIconOverlayImg} referrerPolicy="no-referrer" />
+                    )}
+                    {(item.tags || []).filter(t => t.tagImageUrl).map(tag => (
+                      <img key={tag.tagId} src={tag.tagImageUrl} alt={tag.tagName || ''} style={styles.overviewCategoryIconOverlayImg} referrerPolicy="no-referrer" />
+                    ))}
                   </div>
                 )}
                 {item.checked && (
@@ -315,9 +320,14 @@ export default function ShopPageClient() {
             </p>
           </div>
         )}
-        {currentItem.categoryIconUrl && (
+        {(currentItem.categoryIconUrl || (currentItem.tags && currentItem.tags.some(t => t.tagImageUrl))) && (
           <div style={styles.categoryIconOverlay}>
-            <img src={currentItem.categoryIconUrl} alt={currentItem.categoryName || ''} style={styles.categoryIconOverlayImg} referrerPolicy="no-referrer" />
+            {currentItem.categoryIconUrl && (
+              <img src={currentItem.categoryIconUrl} alt={currentItem.categoryName || ''} style={styles.categoryIconOverlayImg} referrerPolicy="no-referrer" />
+            )}
+            {(currentItem.tags || []).filter(t => t.tagImageUrl).map(tag => (
+              <img key={tag.tagId} src={tag.tagImageUrl} alt={tag.tagName || ''} style={styles.categoryIconOverlayImg} referrerPolicy="no-referrer" />
+            ))}
           </div>
         )}
         {currentItem.checked && (
@@ -850,11 +860,11 @@ const styles = {
   storeName: { fontSize: '0.9rem', color: '#888', fontWeight: '500' },
   overviewItemStore: { fontSize: '0.72rem', color: '#888', margin: 0, fontWeight: '500' },
 
-  // Categorie overlay — detail view (rechts boven in afbeelding)
-  categoryIconOverlay: { position: 'absolute', top: '10px', right: '10px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '10px', padding: '5px', boxShadow: '0 1px 5px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  // Categorie + tag overlay — detail view (rechts boven in afbeelding)
+  categoryIconOverlay: { position: 'absolute', top: '10px', right: '10px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '10px', padding: '5px', boxShadow: '0 1px 5px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', zIndex: 1 },
   categoryIconOverlayImg: { width: '44px', height: '44px', objectFit: 'contain', display: 'block' },
 
-  // Categorie overlay — overzichtsview (rechts boven in kaartafbeelding)
-  overviewCategoryIconOverlay: { position: 'absolute', top: '4px', right: '4px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '6px', padding: '3px', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  // Categorie + tag overlay — overzichtsview (rechts boven in kaartafbeelding)
+  overviewCategoryIconOverlay: { position: 'absolute', top: '4px', right: '4px', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: '6px', padding: '3px', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', zIndex: 1 },
   overviewCategoryIconOverlayImg: { width: '22px', height: '22px', objectFit: 'contain', display: 'block' },
 };
