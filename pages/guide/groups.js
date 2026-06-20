@@ -349,8 +349,6 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const imageInputRef = useRef(null);
   // Lokale kopie van memberIds zodat suggestions meteen bijwerken na toevoegen
   const [localMemberIds, setLocalMemberIds] = useState(group.memberIds || []);
 
@@ -358,30 +356,6 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
   useEffect(() => {
     setLocalMemberIds(group.memberIds || []);
   }, [group.memberIds]);
-
-  async function handleImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingImage(true);
-    try {
-      if (group.imageUrl) {
-        try { await StorageFactory.deleteByUrl(group.imageUrl); } catch {}
-      }
-      const url = await StorageFactory.uploadGroupImage(orgId, group.id, file);
-      await GroupFactory.update(orgId, group.id, { imageUrl: url });
-      await onReload();
-    } catch { alert('Uploaden mislukt.'); }
-    finally { setUploadingImage(false); e.target.value = ''; }
-  }
-
-  async function handleRemoveImage() {
-    if (!confirm('Afbeelding verwijderen?')) return;
-    try {
-      if (group.imageUrl) await StorageFactory.deleteByUrl(group.imageUrl);
-      await GroupFactory.update(orgId, group.id, { imageUrl: null });
-      await onReload();
-    } catch { alert('Verwijderen mislukt.'); }
-  }
 
   const members = shoppers.filter(s => localMemberIds.includes(s.id));
 
@@ -426,33 +400,11 @@ function GroupCard({ group, shoppers, orgId, onEdit, onDelete, onReload }) {
             style={styles.groupImage}
           />
         )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={styles.cardName}>{group.name}</p>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <p style={{ ...styles.cardName, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.name}</p>
           <p style={styles.cardSub}>{localMemberIds.length} {localMemberIds.length === 1 ? 'lid' : 'leden'}</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleImageChange}
-          />
-          <button
-            style={styles.imageButton}
-            onClick={e => { e.stopPropagation(); imageInputRef.current?.click(); }}
-            disabled={uploadingImage}
-            title={group.imageUrl ? 'Afbeelding wijzigen' : 'Afbeelding toevoegen'}
-          >
-            {uploadingImage ? '...' : group.imageUrl ? '🖼' : '📷'}
-          </button>
-          {group.imageUrl && (
-            <button
-              style={styles.deleteSmallButton}
-              onClick={e => { e.stopPropagation(); handleRemoveImage(); }}
-              title="Afbeelding verwijderen"
-            >✕</button>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
           <button style={styles.editSmallButton} onClick={e => { e.stopPropagation(); onEdit(); }}>✏️</button>
           <button style={styles.deleteSmallButton} onClick={e => { e.stopPropagation(); onDelete(); }}>🗑</button>
           <span style={styles.expandIcon}>{expanded ? '▲' : '▼'}</span>
