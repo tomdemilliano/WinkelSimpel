@@ -261,14 +261,14 @@ function ProductLibrary({ claims }) {
 
       {/* Product list */}
       {loading ? (
-        <div style={styles.centered}>
+        <div style={{ ...styles.centered, flex: 1 }}>
           <p style={styles.hint}>Laden...</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flex: 1, overflow: 'hidden' }}>
           {/* Zijpaneel categorieën */}
           {sidebarOpen && sidebarCategories.length > 0 && (
-            <div style={styles.sidebar}>
+            <div style={{ ...styles.sidebar, overflowY: 'auto' }}>
               <button
                 style={{ ...styles.sidebarItem, ...(selectedCategoryKey === null ? styles.sidebarItemActive : {}) }}
                 onClick={() => setSelectedCategoryKey(null)}
@@ -292,7 +292,15 @@ function ProductLibrary({ claims }) {
           )}
 
           {/* Producten */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: '1.5rem' }}>
+            {!loading && filteredProducts.length > 0 && (
+              <p style={styles.productCount}>
+                {(searchQuery || selectedCategoryKey)
+                  ? `${filteredProducts.length} van ${allProducts.length} producten`
+                  : `${allProducts.length} ${allProducts.length === 1 ? 'product' : 'producten'}`
+                }
+              </p>
+            )}
             {filteredProducts.length === 0 ? (
               <div style={styles.centered}>
                 <p style={styles.hint}>
@@ -816,7 +824,10 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ProductLibrary);
 // ---------------------------------------------------------------------------
 const styles = {
   page: {
-    minHeight: '100vh',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
     backgroundColor: '#F4F8FC',
     fontFamily: "'Nunito', system-ui, sans-serif",
     padding: '1.5rem',
@@ -1184,6 +1195,12 @@ const styles = {
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
   },
+  productCount: {
+    fontSize: '0.78rem',
+    fontWeight: '600',
+    color: '#aaa',
+    margin: '0 0 0.6rem',
+  },
   categoryBadge: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -1213,7 +1230,9 @@ const styles = {
     backgroundColor: '#E8F5E9',
     border: '1px solid #A5D6A7',
     borderRadius: '20px',
-    padding: '0.1rem 0.45rem',
+    padding: '0.15rem 0.55rem',
+    fontSize: '0.72rem',
+    fontWeight: '600',
   },
   tagChipIcon: {
     width: '14px',
