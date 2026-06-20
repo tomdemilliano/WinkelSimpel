@@ -367,19 +367,13 @@ function ProductCard({ product, category, productTags = [], onEdit, onDelete, on
         <p style={styles.cardUnit}>{product.unit}</p>
         {category && (
           <div style={styles.categoryBadge}>
-            {category.iconUrl && (
-              <img src={category.iconUrl} alt="" style={styles.categoryBadgeIcon} referrerPolicy="no-referrer" />
-            )}
             <span style={styles.categoryBadgeLabel}>{category.name}</span>
           </div>
         )}
         {productTags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
             {productTags.map(tag => (
-              <span key={tag.id} style={styles.tagChip}>
-                {tag.imageUrl && <img src={tag.imageUrl} alt="" style={styles.tagChipIcon} referrerPolicy="no-referrer" />}
-                <span>{tag.name}</span>
-              </span>
+              <span key={tag.id} style={styles.tagChip}>{tag.name}</span>
             ))}
           </div>
         )}

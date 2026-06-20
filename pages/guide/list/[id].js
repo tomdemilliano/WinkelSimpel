@@ -491,9 +491,6 @@ function ItemRow({ item, index, total, isEditable, categories, onQuantityChange,
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.2rem' }}>
             {categoryName && (
               <div style={styles.itemCategoryBadge}>
-                {categoryIconUrl && (
-                  <img src={categoryIconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
-                )}
                 <span style={styles.itemCategoryLabel}>{categoryName}</span>
               </div>
             )}
@@ -838,9 +835,6 @@ function ProductPicker({ orgId, existingProductIds, categories, tags, onAdd, onC
                       <p style={styles.pickerName}>{product.name}</p>
                       {category && (
                         <div style={styles.itemCategoryBadge}>
-                          {category.iconUrl && (
-                            <img src={category.iconUrl} alt="" style={styles.itemCategoryIcon} referrerPolicy="no-referrer" />
-                          )}
                           <span style={styles.itemCategoryLabel}>{category.name}</span>
                         </div>
                       )}
@@ -1472,9 +1466,9 @@ const styles = {
   itemStoreName: { fontSize: '0.75rem', color: '#888', fontWeight: '500' },
   itemCategoryBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: '20px', padding: '0.1rem 0.45rem' },
   itemCategoryIcon: { width: '14px', height: '14px', objectFit: 'contain', flexShrink: 0 },
-  itemCategoryLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
+  itemCategoryLabel: { fontSize: '0.72rem', fontWeight: '600', color: '#795548', whiteSpace: 'nowrap' },
   itemTagBadge: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', backgroundColor: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: '20px', padding: '0.1rem 0.45rem' },
-  itemTagLabel: { fontSize: '0.68rem', fontWeight: '600', color: '#2E7D32', whiteSpace: 'nowrap' },
+  itemTagLabel: { fontSize: '0.72rem', fontWeight: '600', color: '#2E7D32', whiteSpace: 'nowrap' },
   categoryGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', paddingBottom: '0.5rem', maxHeight: '35vh', overflowY: 'auto' },
   categoryGridTile: { position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, borderRadius: '12px', border: '2px solid #eee', backgroundColor: '#fff', cursor: 'pointer', overflow: 'hidden' },
   categoryGridTileActive: { borderColor: '#5B9BD5', borderWidth: '2.5px', backgroundColor: '#EBF4FF' },
