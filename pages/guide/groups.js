@@ -1118,7 +1118,7 @@ const styles = {
   qrButton: { padding: '0.3rem 0.6rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' },
   editSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#E3F2FD', color: '#1565C0', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
   deleteSmallButton: { padding: '0.3rem 0.45rem', backgroundColor: '#FFEBEE', color: '#c62828', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
-  groupCard: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', overflow: 'hidden' },
+  groupCard: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee' },
   groupImage: { width: '48px', height: '48px', objectFit: 'cover', borderRadius: '8px', flexShrink: 0 },
   groupCardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.75rem', cursor: 'pointer' },
   imageButton: { padding: '0.3rem 0.45rem', backgroundColor: '#F3E5F5', color: '#6A1B9A', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' },
