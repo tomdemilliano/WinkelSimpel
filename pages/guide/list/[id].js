@@ -310,6 +310,9 @@ function ListDetail({ claims }) {
     <div style={styles.page}>
       {/* Header */}
       <div style={styles.header}>
+        {assignedGroupImageUrl && (
+          <img src={assignedGroupImageUrl} alt="" style={styles.headerGroupImage} referrerPolicy="no-referrer" />
+        )}
         <button style={styles.backButton} onClick={() => router.push('/guide/lists')}>
           ← Terug
         </button>
@@ -326,9 +329,6 @@ function ListDetail({ claims }) {
             onClick={() => isEditable && setShowReassignForm(true)}
             disabled={!isEditable}
           >
-            {assignedGroupImageUrl && (
-              <img src={assignedGroupImageUrl} alt="" style={styles.assignedGroupImage} referrerPolicy="no-referrer" />
-            )}
             <span style={styles.assignedLabel}>{assignedLabel || 'Niet toegewezen'}</span>
             {isEditable && <span style={styles.assignedEditHint}>✏️</span>}
           </button>
@@ -1510,10 +1510,10 @@ const styles = {
   },
   
   assignedEditHint: { fontSize: '0.7rem', color: '#bbb' },
-  assignedGroupImage: {
-    width: '18px',
-    height: '18px',
-    borderRadius: '5px',
+  headerGroupImage: {
+    alignSelf: 'stretch',
+    margin: '-1.25rem 0 -1.25rem -1.5rem',
+    width: '4rem',
     objectFit: 'cover',
     flexShrink: 0,
   },
