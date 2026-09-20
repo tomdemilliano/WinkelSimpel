@@ -32,6 +32,7 @@ function ShoppingLists({ claims }) {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -86,6 +87,17 @@ function ShoppingLists({ claims }) {
     return 'Niet toegewezen';
   }
 
+  function getAssignedEntity(assignedTo) {
+    if (!assignedTo) return null;
+    if (assignedTo.type === 'member') {
+      return members.find((m) => m.id === assignedTo.id) || null;
+    }
+    if (assignedTo.type === 'group') {
+      return groups.find((g) => g.id === assignedTo.id) || null;
+    }
+    return null;
+  }
+
   // Group lists by status
   const activeLists = lists.filter((l) => l.status === 'active');
   const draftLists = lists.filter((l) => l.status === 'draft');
@@ -122,6 +134,7 @@ function ShoppingLists({ claims }) {
                     key={list.id}
                     list={list}
                     assignedLabel={getAssignedLabel(list.assignedTo)}
+                    assignedEntity={getAssignedEntity(list.assignedTo)}
                     onOpen={() => router.push(`/guide/list/${list.id}`)}
                     onDelete={list.status === 'draft' ? () => handleDelete(list) : null}
                   />
@@ -136,6 +149,7 @@ function ShoppingLists({ claims }) {
                     key={list.id}
                     list={list}
                     assignedLabel={getAssignedLabel(list.assignedTo)}
+                    assignedEntity={getAssignedEntity(list.assignedTo)}
                     onOpen={() => router.push(`/guide/list/${list.id}`)}
                     onDelete={() => handleDelete(list)}
                   />
@@ -144,12 +158,23 @@ function ShoppingLists({ claims }) {
             )}
 
             {completedLists.length > 0 && (
+              <div style={styles.toggleCompletedRow}>
+                <button style={styles.toggleCompletedButton} onClick={() => setShowCompleted((v) => !v)}>
+                  {showCompleted
+                    ? 'Verberg afgeronde lijstjes'
+                    : `Toon afgeronde lijstjes (${completedLists.length})`}
+                </button>
+              </div>
+            )}
+
+            {showCompleted && completedLists.length > 0 && (
               <Section title="Afgerond">
                 {completedLists.map((list) => (
                   <ListCard
                     key={list.id}
                     list={list}
                     assignedLabel={getAssignedLabel(list.assignedTo)}
+                    assignedEntity={getAssignedEntity(list.assignedTo)}
                     onOpen={() => router.push(`/guide/list/${list.id}`)}
                     onDelete={null}
                   />
@@ -193,11 +218,23 @@ function Section({ title, children }) {
 // ---------------------------------------------------------------------------
 // ListCard
 // ---------------------------------------------------------------------------
-function ListCard({ list, assignedLabel, onOpen, onDelete }) {
+function ListCard({ list, assignedLabel, assignedEntity, onOpen, onDelete }) {
   const statusCfg = STATUS_CONFIG[list.status] || STATUS_CONFIG.draft;
+  const assignedType = list.assignedTo?.type || null;
+  const imageUrl = assignedType === 'group' ? assignedEntity?.imageUrl : null;
+  const fallbackLetter = assignedType === 'group'
+    ? assignedEntity?.name?.[0]?.toUpperCase()
+    : assignedEntity?.firstName?.[0]?.toUpperCase();
 
   return (
     <div style={styles.card}>
+      <div style={styles.cardAvatar} onClick={onOpen}>
+        {imageUrl ? (
+          <img src={imageUrl} alt="" style={styles.cardAvatarImage} referrerPolicy="no-referrer" />
+        ) : (
+          <span>{fallbackLetter || (assignedType === 'group' ? '👥' : '👤')}</span>
+        )}
+      </div>
       <div style={styles.cardMain} onClick={onOpen}>
         <div style={styles.cardTop}>
           <p style={styles.cardTitle}>{list.title}</p>
@@ -427,6 +464,27 @@ const styles = {
     alignItems: 'center',
     overflow: 'hidden',
   },
+  cardAvatar: {
+    flexShrink: 0,
+    width: '44px',
+    height: '44px',
+    borderRadius: '10px',
+    marginLeft: '1rem',
+    backgroundColor: '#EBF4FF',
+    color: '#3A7FC1',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '1.1rem',
+    fontWeight: '800',
+    cursor: 'pointer',
+    overflow: 'hidden',
+  },
+  cardAvatarImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
   cardMain: {
     flex: 1,
     padding: '0.9rem 1rem',
@@ -456,6 +514,21 @@ const styles = {
     padding: '0.2rem 0.6rem',
     borderRadius: '20px',
     whiteSpace: 'nowrap',
+  },
+  toggleCompletedRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: '1rem',
+  },
+  toggleCompletedButton: {
+    padding: '0.5rem 1rem',
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: '#5B9BD5',
+    fontSize: '0.85rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   deleteButton: {
     padding: '0 1rem',
