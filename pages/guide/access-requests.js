@@ -136,11 +136,11 @@ function statusStyle(status) {
 export default withRoleGuard([ROLES.ORG_ADMIN], AccessRequestsPage);
 
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' },
+  page: { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexShrink: 0 },
   backButton: { background: 'none', border: 'none', fontSize: '0.95rem', color: '#4CAF50', fontWeight: '600', cursor: 'pointer', padding: 0 },
   title: { fontSize: '1.2rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
-  content: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
+  content: { flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' },
   errorText: { color: '#d93025', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fdecea', borderRadius: '8px' },
   hint: { fontSize: '0.875rem', color: '#aaa', textAlign: 'center', margin: '2rem 0' },
   sectionLabel: { fontSize: '0.75rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.5rem' },

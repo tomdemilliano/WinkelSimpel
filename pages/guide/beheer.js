@@ -99,11 +99,11 @@ function Beheer() {
 export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], Beheer);
 
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  page: { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 2rem -1.5rem', padding: '1.25rem 1.5rem' },
   backButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.95rem', fontWeight: '700', color: '#fff', padding: 0, fontFamily: 'inherit' },
   title: { fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 },
-  tileGrid: { display: 'flex', flexDirection: 'column', gap: '0.875rem' },
+  tileGrid: { flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.875rem' },
   tile: { display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.25rem', backgroundColor: '#fff', borderRadius: '16px', border: '1.5px solid #D8E5EF', cursor: 'pointer', textAlign: 'left', boxShadow: '0 2px 6px rgba(91,155,213,0.07)', fontFamily: 'inherit' },
   tileIllustration: { flexShrink: 0, width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   tileMeta: { flex: 1, display: 'flex', flexDirection: 'column', gap: '0.15rem' },

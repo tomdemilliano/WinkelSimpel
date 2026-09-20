@@ -218,11 +218,11 @@ function statusBadgeStyle(status) {
 export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], RequestAccessPage);
 
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' },
+  page: { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexShrink: 0 },
   backButton: { background: 'none', border: 'none', fontSize: '0.95rem', color: '#4CAF50', fontWeight: '600', cursor: 'pointer', padding: 0 },
   title: { fontSize: '1.2rem', fontWeight: '700', color: '#1a1a1a', margin: 0 },
-  content: { display: 'flex', flexDirection: 'column', gap: '1rem' },
+  content: { flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' },
   intro: { fontSize: '0.9rem', color: '#666', lineHeight: 1.6, margin: 0 },
   successBanner: { backgroundColor: '#E8F5E9', color: '#2E7D32', borderRadius: '10px', padding: '0.75rem 1rem', fontSize: '0.9rem' },
   errorText: { color: '#d93025', fontSize: '0.875rem', margin: 0, padding: '0.6rem 0.8rem', backgroundColor: '#fdecea', borderRadius: '8px' },

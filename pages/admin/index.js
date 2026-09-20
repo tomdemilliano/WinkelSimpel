@@ -160,26 +160,28 @@ function OrgsTab({ claims, router }) {
         )}
       </div>
 
-      {loading ? (
-        <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
-      ) : visibleOrgs.length === 0 ? (
-        <div style={styles.centered}>
-          <p style={styles.hint}>
-            {orgSubTab === 'real' ? 'Nog geen organisaties.' : 'Geen stand-alone gebruikers.'}
-          </p>
-        </div>
-      ) : (
-        <div style={styles.cardList}>
-          {visibleOrgs.map(org => (
-            <OrgCard key={org.id} org={org}
-              stats={orgStats[org.id]}
-              isStandalone={!!org.isPrivate}
-              onManage={() => router.push(`/admin/users?org=${org.id}&name=${encodeURIComponent(org.name)}`)}
-              onDetail={() => setDetailOrg(org)}
-              onDelete={() => handleDeleteOrg(org)} />
-          ))}
-        </div>
-      )}
+      <div style={styles.scrollArea}>
+        {loading ? (
+          <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
+        ) : visibleOrgs.length === 0 ? (
+          <div style={styles.centered}>
+            <p style={styles.hint}>
+              {orgSubTab === 'real' ? 'Nog geen organisaties.' : 'Geen stand-alone gebruikers.'}
+            </p>
+          </div>
+        ) : (
+          <div style={styles.cardList}>
+            {visibleOrgs.map(org => (
+              <OrgCard key={org.id} org={org}
+                stats={orgStats[org.id]}
+                isStandalone={!!org.isPrivate}
+                onManage={() => router.push(`/admin/users?org=${org.id}&name=${encodeURIComponent(org.name)}`)}
+                onDetail={() => setDetailOrg(org)}
+                onDelete={() => handleDeleteOrg(org)} />
+            ))}
+          </div>
+        )}
+      </div>
 
       {showForm && (
         <NewOrgForm claims={claims}
@@ -574,62 +576,64 @@ function LibraryTab({ claims }) {
         ))}
       </div>
 
-      {section === 'pending' && (
-        pending.length === 0
-          ? <div style={styles.centered}><p style={styles.hint}>Geen producten in de wachtrij. ✅</p></div>
-          : <div style={styles.cardList}>
-              {pending.map(sub => (
-                <SubmissionCard key={sub.id} submission={sub}
-                  orgName={orgs[sub.orgId] || sub.orgId}
-                  centralCategories={centralCategories}
-                  onApprove={cd => handleApprove(sub, cd)}
-                  onReject={() => handleReject(sub)} />
-              ))}
-            </div>
-      )}
-
-      {section === 'approved' && (
-        <>
-          <div style={styles.sectionHeader}>
-            <p style={styles.sectionTitle}>Centrale producten</p>
-            <button style={styles.addButton} onClick={() => setEditingProduct(undefined)}>+ Nieuw</button>
-          </div>
-          {central.length === 0
-            ? <div style={styles.centered}><p style={styles.hint}>Centrale bibliotheek is leeg.</p></div>
+      <div style={styles.scrollArea}>
+        {section === 'pending' && (
+          pending.length === 0
+            ? <div style={styles.centered}><p style={styles.hint}>Geen producten in de wachtrij. ✅</p></div>
             : <div style={styles.cardList}>
-                {central.map(p => (
-                  <CentralProductCard key={p.id} product={p}
+                {pending.map(sub => (
+                  <SubmissionCard key={sub.id} submission={sub}
+                    orgName={orgs[sub.orgId] || sub.orgId}
                     centralCategories={centralCategories}
-                    onEdit={() => setEditingProduct(p)}
-                    onDelete={() => handleDeleteCentral(p)} />
+                    onApprove={cd => handleApprove(sub, cd)}
+                    onReject={() => handleReject(sub)} />
                 ))}
               </div>
-          }
-        </>
-      )}
+        )}
 
-      {section === 'categories' && (
-        <>
-          <div style={styles.sectionHeader}>
-            <p style={styles.sectionTitle}>Centrale categorieën</p>
-            <button style={styles.addButton} onClick={() => setEditingCategory(undefined)}>+ Nieuw</button>
-          </div>
-          {centralCategories.length === 0
-            ? <div style={styles.centered}><p style={styles.hint}>Nog geen centrale categorieën.</p></div>
-            : <div style={styles.cardList}>
-                {centralCategories.map(c => (
-                  <CentralCategoryCard key={c.id} category={c}
-                    onEdit={() => setEditingCategory(c)}
-                    onDelete={() => handleDeleteCentralCategory(c)} />
-                ))}
-              </div>
-          }
-        </>
-      )}
+        {section === 'approved' && (
+          <>
+            <div style={styles.sectionHeader}>
+              <p style={styles.sectionTitle}>Centrale producten</p>
+              <button style={styles.addButton} onClick={() => setEditingProduct(undefined)}>+ Nieuw</button>
+            </div>
+            {central.length === 0
+              ? <div style={styles.centered}><p style={styles.hint}>Centrale bibliotheek is leeg.</p></div>
+              : <div style={styles.cardList}>
+                  {central.map(p => (
+                    <CentralProductCard key={p.id} product={p}
+                      centralCategories={centralCategories}
+                      onEdit={() => setEditingProduct(p)}
+                      onDelete={() => handleDeleteCentral(p)} />
+                  ))}
+                </div>
+            }
+          </>
+        )}
 
-      {section === 'contributors' && (
-        <TopContributorsTab orgs={orgs} />
-      )}
+        {section === 'categories' && (
+          <>
+            <div style={styles.sectionHeader}>
+              <p style={styles.sectionTitle}>Centrale categorieën</p>
+              <button style={styles.addButton} onClick={() => setEditingCategory(undefined)}>+ Nieuw</button>
+            </div>
+            {centralCategories.length === 0
+              ? <div style={styles.centered}><p style={styles.hint}>Nog geen centrale categorieën.</p></div>
+              : <div style={styles.cardList}>
+                  {centralCategories.map(c => (
+                    <CentralCategoryCard key={c.id} category={c}
+                      onEdit={() => setEditingCategory(c)}
+                      onDelete={() => handleDeleteCentralCategory(c)} />
+                  ))}
+                </div>
+            }
+          </>
+        )}
+
+        {section === 'contributors' && (
+          <TopContributorsTab orgs={orgs} />
+        )}
+      </div>
 
       {editingCategory !== null && (
         <CentralCategoryForm category={editingCategory}
@@ -833,28 +837,30 @@ function StoresTab({ claims }) {
         ))}
       </div>
 
-      {section === 'pending' && (
-        pending.length === 0
-          ? <div style={styles.centered}><p style={styles.hint}>Geen winkels in de wachtrij. ✅</p></div>
-          : <div style={styles.cardList}>
-              {pending.map(sub => (
-                <StoreSubmissionCard key={sub.id} submission={sub}
-                  orgName={orgs[sub.orgId] || sub.orgId}
-                  onApprove={() => handleApprove(sub)}
-                  onReject={() => handleReject(sub)} />
-              ))}
-            </div>
-      )}
+      <div style={styles.scrollArea}>
+        {section === 'pending' && (
+          pending.length === 0
+            ? <div style={styles.centered}><p style={styles.hint}>Geen winkels in de wachtrij. ✅</p></div>
+            : <div style={styles.cardList}>
+                {pending.map(sub => (
+                  <StoreSubmissionCard key={sub.id} submission={sub}
+                    orgName={orgs[sub.orgId] || sub.orgId}
+                    onApprove={() => handleApprove(sub)}
+                    onReject={() => handleReject(sub)} />
+                ))}
+              </div>
+        )}
 
-      {section === 'approved' && (
-        central.length === 0
-          ? <div style={styles.centered}><p style={styles.hint}>Centrale winkelbibliotheek is leeg.</p></div>
-          : <div style={styles.cardList}>
-              {central.map(s => (
-                <CentralStoreCard key={s.id} store={s} onDelete={() => handleDeleteCentral(s)} />
-              ))}
-            </div>
-      )}
+        {section === 'approved' && (
+          central.length === 0
+            ? <div style={styles.centered}><p style={styles.hint}>Centrale winkelbibliotheek is leeg.</p></div>
+            : <div style={styles.cardList}>
+                {central.map(s => (
+                  <CentralStoreCard key={s.id} store={s} onDelete={() => handleDeleteCentral(s)} />
+                ))}
+              </div>
+        )}
+      </div>
     </>
   );
 }
@@ -1280,19 +1286,20 @@ export default withRoleGuard(ROLES.APP_ADMIN, AdminDashboard);
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' },
+  page: { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', flexShrink: 0 },
   title: { fontSize: '1.5rem', fontWeight: '700', color: '#1a1a1a', margin: '0 0 0.2rem' },
   subtitle: { fontSize: '0.875rem', color: '#888', margin: 0 },
   signOutButton: { padding: '0.5rem 1rem', backgroundColor: 'transparent', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.875rem', color: '#666', cursor: 'pointer' },
   tabs: { display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '2px solid #eee', overflowX: 'auto', flexShrink: 0 },
   tab: { padding: '0.6rem 1rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.95rem', fontWeight: '600', color: '#aaa', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
   tabActive: { color: '#1a1a1a', borderBottomColor: '#4CAF50' },
-  subTabs: { display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' },
+  subTabs: { display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', flexShrink: 0 },
+  scrollArea: { flex: 1, minHeight: 0, overflowY: 'auto' },
   subTab: { padding: '0.5rem 0.875rem', backgroundColor: '#f0f0f0', border: 'none', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' },
   subTabActive: { backgroundColor: '#1a1a1a', color: '#fff' },
   badge: { backgroundColor: '#ef5350', color: '#fff', borderRadius: '20px', padding: '0.1rem 0.45rem', fontSize: '0.72rem', fontWeight: '700' },
-  statsBar: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '2rem', flexWrap: 'wrap' },
+  statsBar: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', flexShrink: 0 },
   statItem: { display: 'flex', flexDirection: 'column', gap: '0.15rem' },
   statValue: { fontSize: '1.75rem', fontWeight: '800', color: '#1a1a1a', lineHeight: 1 },
   statLabel: { fontSize: '0.8rem', color: '#aaa', fontWeight: '500' },
@@ -1342,7 +1349,7 @@ const styles = {
   importRow: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
   importButton: { padding: '0.75rem 0.875rem', backgroundColor: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
   // Org sub-tabs
-  orgSubTabs: { display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' },
+  orgSubTabs: { display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', flexShrink: 0 },
   orgSubTab: { display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1rem', backgroundColor: '#f0f0f0', border: '1.5px solid transparent', borderRadius: '10px', fontSize: '0.875rem', fontWeight: '700', color: '#888', cursor: 'pointer', fontFamily: 'inherit' },
   orgSubTabActiveReal: { backgroundColor: '#E3F2FD', borderColor: '#1565C0', color: '#1565C0' },
   orgSubTabActiveStandalone: { backgroundColor: '#EDE7F6', borderColor: '#5C35A0', color: '#5C35A0' },

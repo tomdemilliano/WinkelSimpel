@@ -162,26 +162,28 @@ function StoreLibrary({ claims }) {
       />
 
       {/* Store list */}
-      {loading ? (
-        <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
-      ) : filteredStores.length === 0 ? (
-        <div style={styles.centered}>
-          <p style={styles.hint}>
-            {searchQuery ? 'Geen winkels gevonden.' : 'Nog geen winkels. Voeg er een toe!'}
-          </p>
-        </div>
-      ) : (
-        <div style={styles.storeList}>
-          {filteredStores.map(store => (
-            <StoreCard
-              key={store.id}
-              store={store}
-              onEdit={() => { setEditingStore(store); setShowForm(true); }}
-              onDelete={() => handleDelete(store)}
-            />
-          ))}
-        </div>
-      )}
+      <div style={styles.scrollArea}>
+        {loading ? (
+          <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
+        ) : filteredStores.length === 0 ? (
+          <div style={styles.centered}>
+            <p style={styles.hint}>
+              {searchQuery ? 'Geen winkels gevonden.' : 'Nog geen winkels. Voeg er een toe!'}
+            </p>
+          </div>
+        ) : (
+          <div style={styles.storeList}>
+            {filteredStores.map(store => (
+              <StoreCard
+                key={store.id}
+                store={store}
+                onEdit={() => { setEditingStore(store); setShowForm(true); }}
+                onDelete={() => handleDelete(store)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Store form modal */}
       {showForm && (
@@ -466,15 +468,16 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], StoreLibrary);
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1rem -1.5rem', padding: '1.25rem 1.5rem' },
+  page: { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1rem -1.5rem', padding: '1.25rem 1.5rem', flexShrink: 0 },
   backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#fff', cursor: 'pointer', padding: '0.25rem 0', fontWeight: '700', fontFamily: 'inherit' },
   title: { fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 },
   addButton: { padding: '0.45rem 1rem', backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.5)', borderRadius: '20px', fontSize: '0.875rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
-  filterRow: { display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' },
+  filterRow: { display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap', flexShrink: 0 },
   filterChip: { padding: '0.35rem 0.875rem', backgroundColor: '#f0f0f0', border: 'none', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '600', color: '#888', cursor: 'pointer' },
   filterChipActive: { backgroundColor: '#1a1a1a', color: '#fff' },
-  searchInput: { width: '100%', padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', marginBottom: '1.25rem', backgroundColor: '#fff', boxSizing: 'border-box' },
+  searchInput: { width: '100%', padding: '0.75rem 1rem', borderRadius: '10px', border: '1.5px solid #ddd', fontSize: '1rem', marginBottom: '1.25rem', backgroundColor: '#fff', boxSizing: 'border-box', flexShrink: 0 },
+  scrollArea: { flex: 1, minHeight: 0, overflowY: 'auto' },
   storeList: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
   card: { backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #eee', display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem' },
   cardLogoWrapper: { flexShrink: 0, width: '56px', height: '56px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' },

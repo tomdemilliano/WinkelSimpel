@@ -61,6 +61,7 @@ function TagsPage({ claims }) {
         </button>
       </div>
 
+      <div style={styles.scrollArea}>
       {loading ? (
         <p style={styles.hint}>Laden...</p>
       ) : tags.length === 0 ? (
@@ -110,6 +111,7 @@ function TagsPage({ claims }) {
           ))}
         </div>
       )}
+      </div>
 
       {showForm && (
         <TagForm
@@ -236,11 +238,12 @@ function TagForm({ orgId, tag, claims, onSave, onClose }) {
 export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], TagsPage);
 
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1.5rem -1.5rem', padding: '1.25rem 1.5rem' },
+  page: { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1.5rem -1.5rem', padding: '1.25rem 1.5rem', flexShrink: 0 },
   backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#fff', cursor: 'pointer', padding: '0.25rem 0', fontWeight: '700', fontFamily: 'inherit' },
   title: { fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 },
   addButton: { padding: '0.45rem 1rem', backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.5)', borderRadius: '20px', fontSize: '0.875rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
+  scrollArea: { flex: 1, minHeight: 0, overflowY: 'auto' },
   hint: { color: '#aaa', fontSize: '0.95rem', margin: 0 },
   emptyState: { textAlign: 'center', paddingTop: '3rem' },
   emptyIcon: { fontSize: '3rem', margin: '0 0 0.5rem' },
