@@ -104,59 +104,61 @@ function ShoppingLists({ claims }) {
         </button>
       </div>
 
-      {loading ? (
-        <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
-      ) : (
-        <>
-          {lists.length === 0 && (
-            <div style={styles.centered}>
-              <p style={styles.hint}>Nog geen lijstjes. Maak er een aan!</p>
-            </div>
-          )}
+      <div style={styles.scrollArea}>
+        {loading ? (
+          <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
+        ) : (
+          <>
+            {lists.length === 0 && (
+              <div style={styles.centered}>
+                <p style={styles.hint}>Nog geen lijstjes. Maak er een aan!</p>
+              </div>
+            )}
 
-          {activeLists.length > 0 && (
-            <Section title="Actief">
-              {activeLists.map((list) => (
-                <ListCard
-                  key={list.id}
-                  list={list}
-                  assignedLabel={getAssignedLabel(list.assignedTo)}
-                  onOpen={() => router.push(`/guide/list/${list.id}`)}
-                  onDelete={list.status === 'draft' ? () => handleDelete(list) : null}
-                />
-              ))}
-            </Section>
-          )}
+            {activeLists.length > 0 && (
+              <Section title="Actief">
+                {activeLists.map((list) => (
+                  <ListCard
+                    key={list.id}
+                    list={list}
+                    assignedLabel={getAssignedLabel(list.assignedTo)}
+                    onOpen={() => router.push(`/guide/list/${list.id}`)}
+                    onDelete={list.status === 'draft' ? () => handleDelete(list) : null}
+                  />
+                ))}
+              </Section>
+            )}
 
-          {draftLists.length > 0 && (
-            <Section title="Concepten">
-              {draftLists.map((list) => (
-                <ListCard
-                  key={list.id}
-                  list={list}
-                  assignedLabel={getAssignedLabel(list.assignedTo)}
-                  onOpen={() => router.push(`/guide/list/${list.id}`)}
-                  onDelete={() => handleDelete(list)}
-                />
-              ))}
-            </Section>
-          )}
+            {draftLists.length > 0 && (
+              <Section title="Concepten">
+                {draftLists.map((list) => (
+                  <ListCard
+                    key={list.id}
+                    list={list}
+                    assignedLabel={getAssignedLabel(list.assignedTo)}
+                    onOpen={() => router.push(`/guide/list/${list.id}`)}
+                    onDelete={() => handleDelete(list)}
+                  />
+                ))}
+              </Section>
+            )}
 
-          {completedLists.length > 0 && (
-            <Section title="Afgerond">
-              {completedLists.map((list) => (
-                <ListCard
-                  key={list.id}
-                  list={list}
-                  assignedLabel={getAssignedLabel(list.assignedTo)}
-                  onOpen={() => router.push(`/guide/list/${list.id}`)}
-                  onDelete={null}
-                />
-              ))}
-            </Section>
-          )}
-        </>
-      )}
+            {completedLists.length > 0 && (
+              <Section title="Afgerond">
+                {completedLists.map((list) => (
+                  <ListCard
+                    key={list.id}
+                    list={list}
+                    assignedLabel={getAssignedLabel(list.assignedTo)}
+                    onOpen={() => router.push(`/guide/list/${list.id}`)}
+                    onDelete={null}
+                  />
+                ))}
+              </Section>
+            )}
+          </>
+        )}
+      </div>
 
       {/* New list form modal */}
       {showForm && (
@@ -350,7 +352,10 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ShoppingLists);
 // ---------------------------------------------------------------------------
 const styles = {
   page: {
-    minHeight: '100vh',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
     backgroundColor: '#F4F8FC',
     fontFamily: "'Nunito', system-ui, sans-serif",
     padding: '1.5rem',
@@ -364,6 +369,12 @@ const styles = {
     backgroundColor: '#5B9BD5',
     margin: '-1.5rem -1.5rem 1.5rem -1.5rem',
     padding: '1.25rem 1.5rem',
+    flexShrink: 0,
+  },
+  scrollArea: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
   },
   backButton: {
     background: 'none',
