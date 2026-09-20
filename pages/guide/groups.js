@@ -79,7 +79,7 @@ function GroupsAndMembers({ claims }) {
           <h1 style={styles.title}>Groepen & leden</h1>
           <div style={{ width: 60 }} />
         </div>
-        <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+        <div style={{ ...styles.scrollArea, textAlign: 'center', padding: '3rem 1rem' }}>
           <p style={{ fontSize: '3rem', margin: '0 0 1rem' }}>👤</p>
           <p style={{ color: '#666', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
             Als zelfstandig gebruiker heb je geen shoppers of groepen.
@@ -114,40 +114,42 @@ function GroupsAndMembers({ claims }) {
         ))}
       </div>
 
-      {/* Shoppers tab */}
-      {tab === 'shoppers' && (
-        <ShoppersTab
-          shoppers={shoppers}
-          loading={loadingShoppers}
-          orgId={orgId}
-          uid={uid}
-          onReload={loadShoppers}
-          onDelete={handleDeleteShopper}
-          onQr={(s) => router.push(`/guide/qr/${s.id}`)}
-        />
-      )}
+      <div style={styles.scrollArea}>
+        {/* Shoppers tab */}
+        {tab === 'shoppers' && (
+          <ShoppersTab
+            shoppers={shoppers}
+            loading={loadingShoppers}
+            orgId={orgId}
+            uid={uid}
+            onReload={loadShoppers}
+            onDelete={handleDeleteShopper}
+            onQr={(s) => router.push(`/guide/qr/${s.id}`)}
+          />
+        )}
 
-      {/* Groepen tab */}
-      {tab === 'groups' && (
-        <GroupsTab
-          groups={groups}
-          shoppers={shoppers}
-          loading={loadingGroups}
-          orgId={orgId}
-          onReload={loadGroups}
-          onDelete={handleDeleteGroup}
-        />
-      )}
+        {/* Groepen tab */}
+        {tab === 'groups' && (
+          <GroupsTab
+            groups={groups}
+            shoppers={shoppers}
+            loading={loadingGroups}
+            orgId={orgId}
+            onReload={loadGroups}
+            onDelete={handleDeleteGroup}
+          />
+        )}
 
-      {/* Begeleiders tab */}
-      {tab === 'guides' && isOrgAdmin && (
-        <GuidesTab orgId={orgId} uid={uid} />
-      )}
+        {/* Begeleiders tab */}
+        {tab === 'guides' && isOrgAdmin && (
+          <GuidesTab orgId={orgId} uid={uid} />
+        )}
 
-      {/* Toegangsverzoeken tab */}
-      {tab === 'requests' && isOrgAdmin && (
-        <RequestsTab orgId={orgId} callerUid={uid} />
-      )}
+        {/* Toegangsverzoeken tab */}
+        {tab === 'requests' && isOrgAdmin && (
+          <RequestsTab orgId={orgId} callerUid={uid} />
+        )}
+      </div>
     </div>
   );
 }
@@ -1097,11 +1099,12 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], GroupsAndMembers);
 // Styles
 // ---------------------------------------------------------------------------
 const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1.25rem -1.5rem', padding: '1.25rem 1.5rem' },
+  page: { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#F4F8FC', fontFamily: "'Nunito', system-ui, sans-serif", padding: '1.5rem', maxWidth: '600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#5B9BD5', margin: '-1.5rem -1.5rem 1.25rem -1.5rem', padding: '1.25rem 1.5rem', flexShrink: 0 },
   backButton: { background: 'none', border: 'none', fontSize: '0.9rem', color: '#fff', cursor: 'pointer', fontWeight: '700', padding: '0.25rem 0', fontFamily: 'inherit' },
   title: { fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 },
-  tabs: { display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '2px solid #eee' },
+  tabs: { display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '2px solid #eee', flexShrink: 0 },
+  scrollArea: { flex: 1, minHeight: 0, overflowY: 'auto' },
   tab: { flex: 1, padding: '0.65rem 0.5rem', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', marginBottom: '-2px', fontSize: '0.9rem', fontWeight: '600', color: '#aaa', cursor: 'pointer' },
   tabActive: { color: '#1A2B3C', borderBottomColor: '#5B9BD5' },
   tabContent: { paddingTop: '0.25rem' },

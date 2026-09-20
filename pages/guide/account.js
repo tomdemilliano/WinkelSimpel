@@ -343,7 +343,10 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], AccountPage);
 
 const styles = {
   page: {
-    minHeight: '100vh',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
     backgroundColor: '#F4F8FC',
     fontFamily: "'Nunito', system-ui, sans-serif",
   },
@@ -371,6 +374,9 @@ const styles = {
     margin: 0,
   },
   content: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
     padding: '1.25rem',
     maxWidth: '600px',
     margin: '0 auto',

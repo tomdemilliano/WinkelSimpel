@@ -283,8 +283,15 @@ function ListDetail({ claims }) {
   // -------------------------------------------------------------------------
   if (loading) {
     return (
-      <div style={styles.centered}>
-        <p style={styles.hint}>Laden...</p>
+      <div style={styles.page}>
+        <div style={styles.header}>
+          <button style={styles.backButton} onClick={() => router.push('/guide/lists')}>
+            ← Terug
+          </button>
+        </div>
+        <div style={styles.centered}>
+          <p style={styles.hint}>Laden...</p>
+        </div>
       </div>
     );
   }
@@ -298,7 +305,7 @@ function ListDetail({ claims }) {
   const actionBarPadding = isCompleted ? '1.5rem' : isActive ? '17rem' : '9rem';
 
   return (
-    <div style={{ ...styles.page, paddingBottom: actionBarPadding }}>
+    <div style={styles.page}>
       {/* Header */}
       <div style={styles.header}>
         <button style={styles.backButton} onClick={() => router.push('/guide/lists')}>
@@ -324,37 +331,39 @@ function ListDetail({ claims }) {
         <StatusBadge status={list.status} />
       </div>
 
-      {/* Completed notice */}
-      {isCompleted && (
-        <div style={styles.completedBanner}>
-          ✅ Dit lijstje is afgerond door de shopper.
-        </div>
-      )}
+      <div style={{ ...styles.scrollArea, paddingBottom: actionBarPadding }}>
+        {/* Completed notice */}
+        {isCompleted && (
+          <div style={styles.completedBanner}>
+            ✅ Dit lijstje is afgerond door de shopper.
+          </div>
+        )}
 
-      {/* Items list */}
-      {items.length === 0 ? (
-        <div style={styles.emptyState}>
-          <p style={styles.emptyIcon}>🛒</p>
-          <p style={styles.hint}>Nog geen producten. Voeg er toe via de knop hieronder.</p>
-        </div>
-      ) : (
-        <div style={styles.itemList}>
-          {items.map((item, index) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              index={index}
-              total={items.length}
-              isEditable={isEditable}
-              categories={categories}
-              onQuantityChange={(qty) => handleQuantityChange(item.id, qty)}
-              onRemove={() => handleRemoveItem(item.id)}
-              onMoveUp={() => handleMove(index, -1)}
-              onMoveDown={() => handleMove(index, 1)}
-            />
-          ))}
-        </div>
-      )}
+        {/* Items list */}
+        {items.length === 0 ? (
+          <div style={styles.emptyState}>
+            <p style={styles.emptyIcon}>🛒</p>
+            <p style={styles.hint}>Nog geen producten. Voeg er toe via de knop hieronder.</p>
+          </div>
+        ) : (
+          <div style={styles.itemList}>
+            {items.map((item, index) => (
+              <ItemRow
+                key={item.id}
+                item={item}
+                index={index}
+                total={items.length}
+                isEditable={isEditable}
+                categories={categories}
+                onQuantityChange={(qty) => handleQuantityChange(item.id, qty)}
+                onRemove={() => handleRemoveItem(item.id)}
+                onMoveUp={() => handleMove(index, -1)}
+                onMoveDown={() => handleMove(index, 1)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Actions */}
       {isEditable && (
@@ -1082,7 +1091,10 @@ export default withRoleGuard([ROLES.GUIDE, ROLES.ORG_ADMIN], ListDetail);
 // ---------------------------------------------------------------------------
 const styles = {
   page: {
-    minHeight: '100vh',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
     backgroundColor: '#F4F8FC',
     fontFamily: "'Nunito', system-ui, sans-serif",
     padding: '1.5rem',
@@ -1097,6 +1109,12 @@ const styles = {
     margin: '-1.5rem -1.5rem 1.5rem -1.5rem',
     padding: '1.25rem 1.5rem',
     gap: '0.5rem',
+    flexShrink: 0,
+  },
+  scrollArea: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
   },
   backButton: {
     background: 'none',
@@ -1459,7 +1477,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100vh',
+    flex: 1,
   },
   itemStoreRow: { display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' },
   itemStoreLogo: { width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px' },

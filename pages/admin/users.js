@@ -100,34 +100,36 @@ function UsersPage({ claims }) {
         </button>
       </div>
 
-      {loading ? (
-        <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
-      ) : (
-        <>
-          {admins.length > 0 && (
+      <div style={styles.scrollArea}>
+        {loading ? (
+          <div style={styles.centered}><p style={styles.hint}>Laden...</p></div>
+        ) : (
+          <>
+            {admins.length > 0 && (
+              <MemberSection
+                title="Beheerders"
+                members={admins}
+                onDelete={handleDeleteMember}
+              />
+            )}
+
             <MemberSection
-              title="Beheerders"
-              members={admins}
+              title="Begeleiders"
+              members={guides}
+              emptyMessage="Nog geen begeleiders. Voeg er een toe via de knop rechtsboven."
               onDelete={handleDeleteMember}
+              onEdit={(member) => setEditingMember(member)}
             />
-          )}
 
-          <MemberSection
-            title="Begeleiders"
-            members={guides}
-            emptyMessage="Nog geen begeleiders. Voeg er een toe via de knop rechtsboven."
-            onDelete={handleDeleteMember}
-            onEdit={(member) => setEditingMember(member)}
-          />
-
-          <MemberSection
-            title="Shoppers"
-            members={shoppers}
-            emptyMessage="Shoppers worden toegevoegd via de begeleidersinterface."
-            onDelete={null}
-          />
-        </>
-      )}
+            <MemberSection
+              title="Shoppers"
+              members={shoppers}
+              emptyMessage="Shoppers worden toegevoegd via de begeleidersinterface."
+              onDelete={null}
+            />
+          </>
+        )}
+      </div>
 
       {/* New guide modal */}
       {showForm && (
@@ -520,7 +522,10 @@ export default withRoleGuard(ROLES.APP_ADMIN, UsersPage);
 // ---------------------------------------------------------------------------
 const styles = {
   page: {
-    minHeight: '100vh',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
     backgroundColor: '#f5f5f5',
     fontFamily: 'system-ui, sans-serif',
     padding: '1.5rem',
@@ -533,6 +538,12 @@ const styles = {
     alignItems: 'flex-start',
     marginBottom: '1.5rem',
     gap: '0.5rem',
+    flexShrink: 0,
+  },
+  scrollArea: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
   },
   backButton: {
     background: 'none',
