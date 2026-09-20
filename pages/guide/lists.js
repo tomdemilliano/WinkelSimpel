@@ -262,7 +262,9 @@ function NewListForm({ orgId, claims, members, groups, onSave, onClose }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const assignOptions = assignType === 'member' ? members : groups;
+  const assignOptions = assignType === 'member'
+    ? [...members].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
+    : [...groups].sort((a, b) => a.name.localeCompare(b.name));
 
   async function handleSubmit(e) {
     e.preventDefault();
