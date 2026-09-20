@@ -302,7 +302,9 @@ function ListDetail({ claims }) {
   const isActive = list.status === 'active';
   const isCompleted = list.status === 'completed';
 
-  const actionBarPadding = isCompleted ? '1.5rem' : isActive ? '17rem' : '9rem';
+  const assignedGroupImageUrl = list.assignedTo?.type === 'group'
+    ? groups.find(g => g.id === list.assignedTo.id)?.imageUrl
+    : null;
 
   return (
     <div style={styles.page}>
@@ -324,6 +326,9 @@ function ListDetail({ claims }) {
             onClick={() => isEditable && setShowReassignForm(true)}
             disabled={!isEditable}
           >
+            {assignedGroupImageUrl && (
+              <img src={assignedGroupImageUrl} alt="" style={styles.assignedGroupImage} referrerPolicy="no-referrer" />
+            )}
             <span style={styles.assignedLabel}>{assignedLabel || 'Niet toegewezen'}</span>
             {isEditable && <span style={styles.assignedEditHint}>✏️</span>}
           </button>
@@ -331,7 +336,7 @@ function ListDetail({ claims }) {
         <StatusBadge status={list.status} />
       </div>
 
-      <div style={{ ...styles.scrollArea, paddingBottom: actionBarPadding }}>
+      <div style={styles.scrollArea}>
         {/* Completed notice */}
         {isCompleted && (
           <div style={styles.completedBanner}>
@@ -888,7 +893,9 @@ function ReassignForm({ list, members, groups, onSave, onClose }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const assignOptions = assignType === 'member' ? members : groups;
+  const assignOptions = assignType === 'member'
+    ? [...members].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
+    : [...groups].sort((a, b) => a.name.localeCompare(b.name));
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -1289,18 +1296,14 @@ const styles = {
     marginTop: '0.1rem',
   },
   actions: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flexShrink: 0,
     backgroundColor: '#fff',
     borderTop: '1px solid #eee',
+    margin: '0 -1.5rem',
     padding: '1rem 1.5rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '0.6rem',
-    maxWidth: '600px',
-    margin: '0 auto',
   },
   addProductsButton: {
     padding: '0.75rem',
@@ -1507,4 +1510,11 @@ const styles = {
   },
   
   assignedEditHint: { fontSize: '0.7rem', color: '#bbb' },
+  assignedGroupImage: {
+    width: '18px',
+    height: '18px',
+    borderRadius: '5px',
+    objectFit: 'cover',
+    flexShrink: 0,
+  },
 };
